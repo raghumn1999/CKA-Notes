@@ -1,0 +1,84 @@
+1)open the .vimrc file under home directory before starting the exam
+
+update the following 
+    
+      set expandtab
+      set tabstop=2
+      set shiftwidth=2
+
+In bashrc,we need to add below to do auto complete of kubectl command
+
+alias k=kubectl
+source /etc/bash_completion
+source <(kubectl completion bash)
+complete -F __start_kubectl k
+
+==============================================================================================
+
+Useful shortcuts in vim editor:
+
+Shift + I --> go to begining of the current row,then go to insert mode
+
+Shift + A  --> go to end of the current row,then go to insert mode
+
+Shift + C --> delete everthing from the cursor,then go to insert mode
+
+Shift + V --> visual line --> select the entire line
+
+Ctl + V --> visual block --> depends on where your cursor is available
+
+Shift + ^  --> Fitst non-whitespace charactor of current line
+
+Shift + R  --> enter into replace mode,when you type text,existing text keep on deleting,appending new typed text.
+
+gg --> --> go to fitst line of the file 
+
+Shift + G  --> go to last line of the file
+
+:set nu --> setting the line number to all lines --> when you open file, first set the line number which help you to move around the file
+
+:<line_number>  --> go to that line number line  --> :2  --> going to second line
+
+vim -p <path_to_file1> <path_to_file2> --> this will open two files in different tabs, when you need to go to next tab using press gt,
+gt: Switch to the next tab.
+
+/pod  -->  search the pod word in current file forward direction
+
+?pod  --> search the pod word in current file backward direction
+
+o  --> insert a line below current row,then go to insert mode
+
+O  --> insert a line above current row,then go to insert mode
+ 
+h/right arrow in keyboard  --> move left
+
+l/left arrow in keyboard  --> move right
+
+j/down arrow in keyboard  --> move down
+
+k/up arrow in keyboard -->  move up
+
+i  --> insert before current charactor 
+
+a  --> insert after current charactor
+
+0  --> jump to beginning of line
+
+Shift + $ --> jump to end of line
+
+w  --> go to Beginning of next world
+
+e  --> go to End of current word and end next word
+
+b  --> go to Beginning of current and beginning of previous word when we type b mutiple times, 1st type b will go to beginning of current word, 2nd type b will go to beginning of previous, so on
+
+dd --> delete current entire line 
+
+dw --> delete current cursor word 
+
+<number>dd  --> delete the mentioned number of line from current cursor line
+
+:%d  ---> delete all lines in the file
+
+:<start_line_number>,<end_line_number>d --> delete the range of lines  --> 12,15d  --> delete lines from 12 to 15  and 21,21d  --> delete the 21th line only
+

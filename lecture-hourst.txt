@@ -1,0 +1,32 @@
+
+Core concepts --> 3h 39min --> 
+                  practice command to create resource and read core concepts section from CKAD notes
+
+Scheduling --> 3h 2min --> completed
+
+Logging and Monitoring --> 14min
+
+Application Life cyble management --> 2h 22min
+
+Cluster Maintainance --> 46min
+
+Security --> 4h 4min --> 75% completed --> complete remaining,read notes and practice.
+
+Storage --> 1h 5min
+
+Networking --> 3h 21min
+
+Design and install a kubernetes cluster --> 32min
+
+Install Kubernetes the kubeadm way --> 44min
+
+Helm Basics --> 50min
+
+Kustomize Basics --> 1h 30min
+
+Thoubleshooting  --> 1h 13min
+
+Other topics --> 12min
+
+Mock Exams --> 2h 5min
+

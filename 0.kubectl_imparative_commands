@@ -1,0 +1,674 @@
+mention --dry-run=client -o yaml immediately after image option,otherwise it will create resource instead of giving yaml
+
+kubectl create cj testcj --image=nginx --dry-run=client -o yaml --schedule='*/1 * * * *'  -- /bin/b
+ash -c 'sleep 3600'
+
+k create quota myrq --hard=memory=1Gi,cup="1",pods=2 --dry-run=client -o yaml --> for creating the resource quota
+
+kubectl get po -A  --> listing all pods in all namespace
+
+kubectl set image po <name_of_pod> <container_name>=<image_name>
+
+k run nginx --image=nginx --env=var1=val1 --env=var2=val2 --> we can pass envs at the time of pod creation
+
+k annotate po -l app=v2 owner=marketing  --> instead of mentioning the name of pod,we are filtering the pod with app=v2 , 
+adding annotation to all pods which have label as app=v2
+
+we can use the -l key=value filter to get resource based on key value,the perform the command
+
+k label po -l app app-  --> we are greeping the pods which have key as app, and deleting the app label from all pods.
+
+k get jobs --watch  --> watching the jobs in cluster
+
+echo -e "var1=value1\nvar2=value2" > t.txt
+
+k create cm cmfromfile --from-file=t.txt  --> creation of cm using file
+
+k create cm cmfromfile --from-file=<key>=t.txt  --> creation of cm using file
+
+echo -e "var1=value1\nvar2=value2" > config.env
+
+k create cm cmfromenv --from-en-file=config.env  --> creating the cm from env file
+
+k describe cm cmfromfile
+
+kubectl auth can-i get pods --as=system:serviceaccount:rbac-namespace:rbac-sa 
+
+helm -n <name-space> ls -a  --> list all released install by helm,it will list pending state release also 
+
+k -n moon creare cm <name_of_cm> --from-file=<key>=<path_to_file>
+
+you must use the busy box to create tempavery pod
+
+k -n <name_of_ns> run tmp --image=busybox --restart=Never --rm -i -- wget -O- <name_of_server or ip>:<port>
+
+add the annotation to pod which have label as proctected=true
+
+k annotate po -l proctected=true  protected="do not delete this pod"
+===================================================================================
+
+if we are trying to find the token from secret as non-encoded format.
+
+kubectl describe secret <name_of_secret>  --> this is will give token directly in non-encoded format
+
+kubectl get secret <name_of_secret> -o yaml --> this will give secret in encoded format,you have to decode using base64 -d
+
+echo <encoded_data> | base64 -d
+ 
+=================================================================================================================
+
+helm commands
+
+helm repo add name_of_repo git_url
+
+helm search repo name_of_repo  --> to check how many charts are available in repo
+
+helm show values <path_to_chart_dir>
+
+helm install --set key=value <name_of_installation> <path_to_chart_dir> -n <name_of_namespace>
+
+helm list --> to check list of packages installed from helm
+
+helm uninstall <release_name>  
+=================================================================================================================
+
+Very easy technic to get certain data from deployed kubernetes object.
+
+kubectl get po <name_of_pod> -o jsonpath='{.followed_by_key_used_in_yaml}'
+
+if don't have idea on status section or any other section because which status section will be created after object deployed in cluster.
+
+get the yaml of one object(po or deploy or service),go through the yaml,then mention the available key in jsonpath expression.
+
+Ex: 
+kubectl get po nginx -o jsonpath='{.spec.containers.image}' --> going spec of pos,then containers, and fetching the image details.
+
+i want the ip assgined to nginx pod, but i don't know about the status section,do following
+
+kubectl get po nginx -oyaml  --> you will get the yaml of pod,go through the status section,pass section name(key) to get it
+
+kubectl get po nginx -o jsonpath='{.status.hostIP}' --> getting the ip of po
+
+=================================================================================================================
+
+1) kubectl config :
+
+In config file,there are three thing,clusters,users and context(combination of user and cluster)
+
+$ kubectl config set-context --current --namespace=<name_of_namespace>  --> updating the current context with different namespace --> mainly used in exam
+
+$ kubectl config view  --> to check config file details
+
+$ kubectl config get-contexts  --> list the available contexts,it show the context name,cluster name and user name
+
+$ kubectl config use-context  <name_of_context> --> changing into different context to use in kubeconfig file
+
+$ kubectl config get-clusters  --> list the available clusters
+
+$  kubectl config get-clusters --kubeconfig=/root/my-kube-config  --> gettting the cluster details from my-kube-config file
+
+$ kubectl config get-users  --> list the available users
+
+$ kubectl config set-credentials --> set a new user entry in kubeconfig file. replace credentials with clutser for set clutser and context for set context  --> don't use the set command to add users and new cluster, take backup of kubeconfig file, then add new details by editing the file
+
+$ kubectl config delete-user --> delete user from kubeconfig file, replace user with cluster for deleting cluster and context for deleting context
+
+
+Only get format will accept the pural forms.
+
+=================================================================================================================
+Don't warry about the what is api group need to mention in role create or in existing role.
+just run the below command by adding the name_of_resouce to resource key, imparative command give yaml with all required details,
+use output yaml to add into existig role.
+
+all verbs in role creation -->  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+kubectl create role test-role --verb=get,list,update,delete,create --resource=deploy,pod,svc,rc --dry-run=client -o yaml 
+
+output of above command:
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: test-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - services
+  - replicationcontrollers
+  verbs:
+  - get
+  - list
+  - update
+  - delete
+  - create
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - update
+  - delete
+  - create
+
+$ kubectl create role testrole --verb=get,list,watch,create,delete --resource=po,deploy,sts --resource-name=nginx-deploy,busybox-pod $dro
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: testrole
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - nginx-pod
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+- apiGroups:
+  - apps
+  resourceNames:
+  - nginx-pod
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - delete
+
+
+=================================================================================================================
+
+2) kubectl apply and delete : apply is used when you have yaml file to create resource
+
+$ kubectl apply -f <path_of_definition_file>  ---> creating the resource in kubernetes using yaml file
+
+$ kubectl delete -f <path_of_defintion_file>  --> deleting the resource.
+
+=================================================================================================================
+
+3) kubectl get : used to get the details about the resources
+
+$ kubectl get <resource_type> 
+   
+  ex: kubectl get deploy
+
+$ kubectk get <resource_type> <name_of_resource>
+
+  ex: kubectl get deploy nginx-deployment
+
+$ kubectl get all  --> get all resources present in default namespace
+
+$ kubectl get all -n <name_of_name_space>
+
+-o option will be used with yaml,json and wid 
+
+=================================================================================================================
+
+4) kubectl describe : descrive the resource to get the more details about the resource
+
+$ kubectl describe <resource_type> <name_of_resource>
+
+  Ex: kubectl describe po nginx-pod
+      kubectl describe deploy nginx-deployment
+      kubectl describe svc my-service
+ 
+=================================================================================================================
+
+5) Imparative commands: allow quick actions without the need for yaml files
+
+$ kubectl create deploy nginx-deployment --image=nginx -r 3 --port=80  --> --port option will  add the container port section in container
+
+--> all commands with examples --> https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#-strong-getting-started-strong-
+
+Creating the autoscaler for deployment
+
+kubectl autoscale deploy <name_of_deploy> --min=<number> --max=<number> --cpu-percent=<number> --> creating the autoscaller for deployment,wen traffic to this deployment increases. autoscaller automatically scale up and scale down based traffic. we can create auto scaller to any resource 
+
+Ex: kubectl autoscale deploy nginx --min=5 --max=10 --cpu-percent=80  --> created autoscaller for nginx deplyment by mentioning the min and max pods and cpu.
+
+  kubectl get hpa --> checking autoscaller object
+
+=================================================================================================================
+
+Rolling update command:
+
+kubectl rollout history <resource_type> <Name_of_Resource>
+
+kubectl rollout history deploy nginx --> checking the rolling out history
+
+kubectl rollout status deploy nginx --> checking updating process lively
+
+kubectl rollout undo deploy nginx --> rollback to previous version of deployment
+
+kubectl rollout undo deploy nginx --to-revision=2  --> rolling back to second revision version of deployment
+
+For every object have rollout,We can pause rollout,do the required changes to update deployment,then resume the deployment  --> another way of updating the application when we have major changes
+
+kubectl rollout pause deploy nginx  --> pausing the update to nginx deployment
+
+Do the yaml changes of deployment,save --> this will not update deployment, you have resume the rollout
+
+kubectl rollout resume deploy nginx  --> changes start updating to deployment
+
+=================================================================================================================
+
+6) creating the manifest files using the imparative commands:
+
+$ kubectl create deploy mongo-deploy --replicas=3 --image=mongo --dry-run=client -o yaml -- /bin/bash -c 'sleep 3600' > mongo-deploy.yaml  
+
+--dry-run=client will print the object,will not create object, 
+-o yaml give output in yaml format and storing the stdout of command into file
+
+same way we can apply the command to some resouces --> supported resources listed in this doct --> 
+https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#create
+
+
+we can create pod using imparative command:
+
+$ kubectl run <name_of_pod> --image=<name_of_image>  <options>
+
+options should be mentioned after --image sytax for pod creation
+
+options are --dry-run=client -o yaml
+            --restart=Never
+            --command -- <arg1> <arg2>
+            --rm  --> removing the pod after exit
+            -it  --> interactive terminal
+            -l "key1=value1,key2=value2" --> adding the label at the time of pod creation
+            --expo
+            
+kubectl run ng --image=nginx --command -- /bin/bash -c 'sleep 3800' --port 80  -l "app=nginx,version=v2"
+
+--show-labels is one of common option to check labels attached to the resource
+
+Ex: kubectl get po --show-labels
+    kubectl get svc --show-labels
+    kubectl get nodes --show-labels
+    kubectl get deploy --show-labels
+
+k delete po busybox3 --force --grace-period=0  --> deleting the po using --grace-period option
+
+we can add and remove label to any resouce like how we can add into node 
+
+kubectl label <resource_type> <name_of_resource> <key>=<value>
+
+kubectl label po nginx2 app=v1 --> adding the label
+
+kubectl label po nginx2 app-  --> deleting the label
+
+kubectl label po nginx2 app=v2 --overwrite=true  --> it will overwrite existing label value
+
+=================================================================================================================
+
+Creating of resource imparative command:
+
+1) For pod creation we have kubectl run command and we have to pass --command followed by -- to mention command to be executed from pod
+   
+   kubectl run  <name_of_pod> --image=<image_name> --dry-run=client -o yaml --command -- <arg1> <arg2> .....<argN>
+
+   kubectl run nginx --image=nginx --dry-run=client -o yaml --command -- /bin/sh -c 'echo hello;sleep 3000' > pod.yaml
+
+   kubectl create -f pod.yaml
+
+2) For other resource don't have --command option
+   
+   kubectl create <resouce_type> <name_of_resource> --image=<name_of_image> --dry-run=client -o yaml -- <command> <arg1> <arg2>...<argN>
+
+   
+   -- option will take space as delimiter, in pod it will add passed command and arguments into command key
+
+      - command:
+        - /bin/sh
+        - -c
+        - sleep 3600
+
+   After -o option,we can add other available options based on resource type
+
+   kubectl create deploy nginx --image=nginx  --dry-run=client -o yaml -- /bin/bash -c 'echo hello;sleep 3000' > deploy.yaml
+   
+   kubectl create -f deploy.yaml
+
+   kubectl create job <name_of_job> --image=<image_name> -- <command> <arg1> <arg2>...<argN> 
+  
+   -- option will take space as delimiter 
+   
+   kubectl create job testjob --image=busybox --dry-run=client -o yaml --restart=Never -- /bin/bash -c 'echo hello;sleep 3000' > job.yaml
+
+   kubectl create -f job.yaml
+
+Note: Mention --dry-run and -o option if you want to create yaml first,placement of option will matter to generate yaml
+
+   we can create cronjob using imparative command:
+
+   kubectl create cj testcj --image=busybox --dry-run=client -o yaml --restart=Never  --schedule='* * * * *' -- /bin/sh -c 'date;echo hello from cluster;' > cronjob.yaml
+
+=================================================================================================================
+
+k get events -o json | jq -r '.items[].message' | grep 'Node node01 has been rebooted, boot id: c9bc2ccd-2f97-4457-aee1-6f1c5c0b5cc0'
+
+=================================================================================================================
+we can filter the resource by using the labels
+
+kubectl get po -l <key>=<value> or <key>  --> list only pods which labels matches with key value or key
+       -l option also support the != also,which help to files which pod don't have label
+
+ex: kubectl get po -l app=v1   --> listing the pods which have label as app=v1
+    
+    kubectl get po -l app  --> listing the pods which have label key app
+
+   kubectl get po -l app!=v2  --> list pods which don't have label called app=v2
+
+we can list the pods by matching any one label present in pod.
+
+kubectl get po -l "app in (v1,v2)"  --> this will list the pods which label as app=v1 and app=v2
+
+we can use the same filter to add new label into pods which have label app=v1 or app=v2
+
+kubectl label po -l "app in (v1,v2)" tier=web  --> this will add the tier=web label to pods which have label app=v1 or app=v2
+
+we can use the -l option to do adding new label,ovwerwrite existing label,remove label
+
+kubectl label po -l app app-  --> list the pods which have label key as app then perform the label command. same way we can use to perform other things.
+
+
+we can delete the nginx1 nginx2 and nginx3 pod with single command using {start_num..end_num}. {} will play major role in working resource names have only number difference
+
+kubectl delete po nginx{1..3}  --> command will loop into 1 2 and 3 , add into nginx word,delete the all three pods(nginx1,nginx2 and nginx3)
+
+=================================================================================================================
+Adding the annotation into pod: we can add annotation into any resource like how we added into pod below
+
+kubectl annotate po -l app=v2 owner=marketing  --> filtering the pod which have label app=v2 and adding the annotation.
+
+kubectl annotate po <name_of_pod> --list  --> give list of annotations available in that pod
+
+we can do loop into name of object using {}:
+lets we have pods as nginx1,nginx2 and nginx3
+
+To get po the annotation details of all three pods(nginx1,nginx2 and nginx3)
+
+k annotate po nginx{1..3} --list   ---> {} will po the loop 1 2 3 into same command and give the annotation of all pods
+
+For deleting annotation,as like labels we can mention the key- to delete the annotation
+
+kubectl annotate po <name_of_po> <key>-
+
+kubectl annotate po nginx{1..3} description-  --> removed the description annotation in nginx1,nginx2 and nginx3 pod
+
+=================================================================================================================
+
+7) edit the resouce which don't have manifest and created using imparative command:
+
+$ kubectl edit <resource_type> <name_of_resouce>
+
+  ex: kubectl edit deploy nginx-deploy 
+
+scale up or down the pods using imparative command by passing number to replicas :
+
+$ kubectl scale deploy nginx-deploy --replicas=4
+
+=================================================================================================================
+
+8) Delete and re-create resource --> kubectl replace --force
+
+  $ kubectl replace --force -f <defition_yaml>
+
+=================================================================================================================
+
+9) Debugging commands:
+
+$ kubectl logs <name_of_pod>
+
+kubectl logs <name_of_pod> -p  --> get the previously restarted pod logs
+
+kubectl logs <name_of_pod> --since=1h  --> getting the last one hour log
+
+kubectl logs <name_of_pod> --since=1m  --> getting the last one minute log
+
+kubectl logs <name_of_pod> --since=10s  --> getting the last ten seconds log
+
+$ kubectl exec -it <name_of_pod> -- command_to_execute
+
+  ex: kubectl exec -it mongo-5890 -- /bin/bash
+
+=================================================================================================================
+
+10) Checking on resource usage:
+
+$ kubectl top pods --> give info about the cpu and memory usage by pods.
+
+$ kubectl top nodes --> give info about cpu and memory in nodes.
+
+$ kubectl top nodes --sort-by=memory --> give info about cpu and memory in nodes.
+
+$ kubectl top nodes --sort-by=cpu --> give info about cpu and memory in nodes.
+
+=================================================================================================================
+
+testing the service by creating tmp pod:  -->  search as network policy in k8s document,click on delcare network link --> search test word
+                                               you will get command to create temp pod
+
+$ kubectl run tmp --restart=Never --rm -i --image=nginx:alpine -- curl -m 5 sun-srv.sun:9999
+
+To get the endpoints available in defult namespace
+
+$ kubectl get ep -n <name_of_namespace>
+
+=================================================================================================================
+
+Creation of service using expose command:
+
+First way of creating the service:
+
+  kubectl create deploy nginx-deploy --image=nginx --dry-run=client -o yaml > deploy.yaml
+  
+  kubectl expose deploy nginx-deploy --name=nginx-svc --port=80 --target-port=80
+  --> will create service for nginx-deploy deployment, advantage of expose command is, add labels of pod into svc. target port means container port
+  
+  kubectl expose deploy nginx-deploy --name=nginx-svc --dry-run=client -o yaml --port=80 --target-port=80 --type=NodePort > nginx-node-port.yaml
+  
+  add the node port details to nginx-node-port.yaml, then create nodeport type service type
+
+Second way of creating the service:
+
+ kubectl create svc <type_of_service> <name_of_service> <options>
+
+ service types are clusterip,nodeport,externalname,loadbalancer
+
+ mainly used to options are
+        --tcp=<clusterip_por>:<target_port>
+        --node-port=<node_port>
+
+  kubectl create svc nodeport ng --dry-run=client -o yaml --tcp=8080:80 --node-port=31200 > nodeport-svc.yaml
+
+  add the labels of pod into selector ,then create service
+
+==========================================================================================================================
+
+k cp <namespace>/<name_of_pod>:<path_in_container> <path_to_file_in_host_machine>
+
+k cp default/busybox:/etc/passwd /root/passwd   --> copying the passwd file from pod into host machine
+
+k cp --retries=1 default/busybox:bin/ /root/bin/  --> /root/bin must be exits in hostmachine and we are copying the /bin dir but we no need to mention leading / 
+
+====================================================================================================================
+
+canary deployment --> there are two impartant things in this depoyment stratergy
+   * common labels should be present in old version and new version instances
+   * consider the old version number of instance as 100%, don't consider the old and new version number of instances are 100%
+     ex: deployed 10 instances with old images
+         deployed  10 instances with new images
+         
+
+         *For canary distribution,we have to take 10 as 100%,then calculate the percentage of distribution
+         70% into  old instances and 30% into new instances, then 3 is 30% and 7 is 70% 
+         *Both instance should have common label to distribute the traffic from service
+
+====================================================================================================================
+
+If we want to all communication to mutiple port of pod,we can add port details under ports key
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-netpol
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: apiserver
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: monitor
+    ports:
+    - protocol: "TCP"
+      port: 8000
+    - protocol: "TCP" #👈👈👈
+      port: 5000
+
+If we want to accept the request from multiple pods, we can add po details into from key
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-netpol
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: apiserver
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: monitor
+    - podSelector:    #👈👈👈
+        matchLabels:
+          app: bookstore
+    ports:
+    - protocol: "TCP"
+      port: 8000
+
+====================================================================================================================
+
+1)Allow the web-pod to communicate with app-pod only on 80 port
+
+app-pod  --> incoming  --> create ingress by using pod selector(under spec) is app-pod
+ 
+web-app  --> outing --> create egress by using pod selector(under spec) is web-pod
+
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-policy  #👈👈👈 Change
+  namespace: netpol-namespace
+spec:
+  podSelector:
+    matchLabels:
+      tier: web #👈👈👈 Change - Which pod does this Network Policy Apply to i.e. any pod with label tier=web
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              tier: app #👈👈👈 Egress - Traffic to pod with label tier=app
+      ports:
+        - port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-policy #👈👈👈 Change  
+  namespace: netpol-namespace
+spec:
+  podSelector:
+    matchLabels:
+      tier: app #👈👈👈 Change - Which pod does this Network Policy Apply to i.e. any pod with label tier=app
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: web #👈👈👈 Ingress - Traffic from pod with label tier=web
+      ports:
+        - port: 80
+
+====================================================================================================================
+
+sorting the pods which are consuming the more memory
+
+kubectl top pods -A --sort-by=memory
+
+kubectl top pods -A --sort-by=cpu
+
+kubectl get events -A --sort-by='metadata.creationTimestamp' --> sorting the events by its created date
+
+====================================================================================================================
+
+Technic to get data using jsonpath option:
+
+1) Understand the structure of resource yaml,
+   ex: kubectl get po <name_of_pod> -o yaml
+
+2) From the above output,check for which details your looking and check under which section that details will come
+
+  ex: get the hostip of pod  
+
+   which come under status array
+
+  kubectl get pod <name_of_pod> -o jsonpath='{.status.hostIP}' --> you will get hostIp of that pod
+
+====================================================================================================================
+
+To check the api groups and its object
+
+Serve the api into localhost port using kubectl proxy command
+     kubectl proxy --port=8001
+
+In new terminal,do curl
+    curl http://localhost:8001  --> get all details along with supported url path
+
+    curl http://localhost:8001/apis | grep name
+
+====================================================================================================================
+
+Once the network policy created,test it by running the curl command
+
+we have three pods -> app-bookstore,app-coffeshop,app-frontend
+
+Allow communication from app-frontend pod to app-bookstore pod.
+
+Created ingress traffic for app-bookstore
+
+get the ip of pod  --> kubectl get po -o wide
+
+Testing:  k exec -it app-frontend command -- /bin/bash -c 'curl http://<app-bookstore_pod_ip>' --> if it give the ngixn web page 
+          k exec -it app-coffeshop command -- /bin/bash -c 'curl http://<app-bookstore_pod_ip>' --> if no response,
+           --> network policy working fine
+
+Use ngixn image to test network policy applied correctly or not 
+
+k run testnginx --image=nginx --rm -it --restart=Never -- /bin/bash -c 'curl <pod_ip>'
+
+====================================================================================================================
+
+
