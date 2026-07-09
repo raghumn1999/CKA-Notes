@@ -498,7 +498,6 @@ you have to pass endpoint of etcd,cacert,cert and key to authenticate to take ba
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key 
 
-
 Restore etcd:
 stop kube-api server 
   $ systemctl stop kube-apiserver
@@ -1022,37 +1021,1166 @@ hostPath is not recommented to use as cluster in multi node
 
 Persistent Volumes:
 
+why we go with PV: --> for my knowledge purpose
+Every configuration required to configure storage for volume goes within pod definition file when you have large env,deploying lot of pods, user has to configure storage every time for each pod. every time changes made into storage type,user need to update each pods.
+
+PV is cluster wise pull of storage configured by adminstrator to be used by user by deploying application.
+$ kubectl create -f pv.yml 
+$ kubectl ge pv
+
+![pv1](images/pv1.png)
+
+Persist Volume Claims:
+Administrator create set of pv and user create pvc to claim storage on cluster,once pvc created kubernetes binds the pv into pvc based requests and properties set on pv.
+properties like sufficient capacity,access modes,volume modes,storage class 
+
+if multiple pv are match,you stil use labels and selector to bind to right pv.
+if no storage available, pvc remains in pendign state,once new pv available claim will be automatically bind into newly available pv.
+
+$ kubectl create -f pvc.yml 
+$ kubectl get pvc 
+
+![pvc](images/pvc.png)
+
+$ kubectl delete pvc <pvc-name> 
+
+what happen into underying persistent volume?
+persistentVolumeReclaimPolicy: Retail --> keep pv and its data, not available reuse for other pvc
+                               Delete --> pv will be delete as soon as pvc delete
+                               Recycle(Deprecated) --> data in pv scrubbed and pv is made available for other pvc again
+ 
+![pv_pvc_pod](images/pv_pvc_pod.png)
 
 
+Storage Classes:
+
+why storage classes? --> my knowledge purpose
+when we need to use storage on pv,first we have create storage on particular platform like google cloud or aws,then we can use in pv definition this is called static provisioning. To make use of dynamic provisioning,kubernetes come up with storage classes.
 
 
+storage class:
+In storage class, you can mention provisioner, which can automatically provision storage and attach that to pod when claim is made,this called dynamic provisioning of volumes
+
+we can use storage class name in pvc,when pvc create, request go to storage class,it default  provisionor to provision the storage with required size on storage provider(google cloud,aws etc) and create pv, bind that pvc to pv and no need to create pv manually any more.
+
+![sc_pv_pvc_pod](images/sc_pv_pvc_pod.png)
 
 
+# Section 9: Networking
+
+create network.md file in linux notes folder and update below notes.
+well explained networking,DNS and Network namespaces concepts,which will help in interview
+
+Networking Prerequisites:
+* Switching and Routing
+  - Switching
+  - Routing
+  - Default Gateway
+* DNS
+  - DNS configuration on linux
+  - coreDNS introduction
+* Network namespaces
+* Docker Networking
+
+Switching:
+we have system A and system B, do we connect them?
+we connect them by switch, switch create network containing two systems.
+To connect systems to switch we need interface($ ip link, pyshical or virtual depending on host). we use $ ip link command to see the inteface(eth0 is interface) and that will using to connect to switch.
 
 
+![switching1](images/switching1.png)
+
+let assume it is network with address 192.168.1.0, we can assign system with same network.
+we use command below command to assign ip
+  $ ip addr add 192.168.1.10/24 dev eth0.
+systems on same network can communicate with each other using switch.
+if we are connecting system to multiple networks via interfaces,system will have multiple ip.
+eth0,eth1 etc are interfaces which helps to connect to network,ip assgined from network.
+
+![switching2](images/switching2.png)
+
+switch can enable connection within a network. which means it receive package from host and delivery to other host within the same network.
 
 
+Routing:
+how do we connect system on different network?
+Router is intelitent device which helps to connect two networks together,since it connect other network it get assigned two ip addresses.
+we have router connected to two network, that can enable communication between networks
+
+conneting two network process is called routing
+
+![routing1](images/routing1.png)
+
+When system B want to send a package to system C,how does it know where is router because router is another device on network?
+we can configure the systems with gateway.if network is room,gateway is door, systems need to know where to go.
+
+To see the exitsing routing configuration on system, use below command
+$ route
+
+configure route on system B to connect to system C through the gateway.
+$ ip route add 192.168.2.0/24 via 192.168.1.1 --> reach the 192.168.2.0 network though gateway(192.168.1.1)
+
+$ route --> show the route configured on system 
+
+![routing2](images/routing2.png)
+
+if system D want to send package to system D, need to add route configuration on system D
+$ ip route add 192.168.1.0/24 via 192.168.2.1
+
+suppose system need access into internet, connect router to internet and add new route on system
+$ ip route add 172.217.194.0/24 via 192.168.2.1
+
+There are so many different sites on internet, instead of adding same route table for each internet,we can simply say 
+any network you don't know route,use default route as a default gateway
+this way any request exits outsite of your network goes through this default gateway.
+
+$ ip route add default via 192.168.2.1 
+
+![routing3](images/routing3.png)
+
+you can also use 0.0.0.0 instead of defualt
+$ ip route add 0.0.0.0 via 192.169.2.1
+
+if your facing issue to reach to internet, checking route table and gateway is best place start debugging.
+
+how we can setup linux host as router?
+Connect system B into both network using interfaces
+Add route in system A on reaching other network via gateway
+  $ ip route add 192.168.2.0 via 192.168.1.6
+As system C send back response,add route to reach to network of system A
+  $ ip route add 192.168.1.0 via 192.168.2.6
+stil we can share packages between system A to system C
+
+![routing4](images/routing4.png)
+
+By default in linux packages are not forwarded from one interface(eth0) into other interface(eth1)
+package recived by system B on eth0 not forwarded into system B eth1
+for security reason,it is not allowed,if eth0 connected to public network and eth1 connected private network, we don't allow to send any message from public network to private network unless you explicitly allow that.
+
+we can allow by setting 1 on /proc/sys/net/ipv4/ip_forword file. this changes does not persist after reboot,so update 
+net.ipv4.ip_forward = 1 to persist changes after reboot also.
+
+$ ip link --> see the interfaces and modify
+$ ip addr --> to see ip address assinged those interfaces.
+$ ip addr add 192.168.1.10/24 dev eth0 --> set ip address on interface --> changes made using this command only valid still restart,to persist change you must set on hcnetwork interface file
+$ ip route or route --> to seet the routing table or routes configured on system 
+$ ip route add 192.168.1.0/24 via 192.168.2.1 --> to add route into routing table.
+$ cat /proc/sys/net/ipv4/ip_forward --> to check forward between network is enabled or not
+ 
+DNS:
+
+we can use name instead of ip to communicate,to do this we have to update ip address followed by name on /etc/hosts file.
+system will check for /etc/hosts file to resolve to ip address.
+Even if hostname of system B is different and updated some name(ex:db) in /etc/hosts file, ping db will reach into system B.
+Translating hostname into ip address is know as name resolution.
+
+![dns1](images/dns1.png)
+
+DNS server:
+when network grow and have larger number of systems, managing them by updating /etc/hosts in each system is very hard.
+so we decided to move all these entries into single server to manage centrally,we call that as DNS server.
+we can tell systems to lookup DNS server when need to resolve hostname 
+
+![dns2](images/dns2.png)
+
+how to we point our systems to lookup DNS server?
+update dns server details on /etc/resolv.conf file like below
+ nameserver 192.168.1.100
+system will look into dns server from /etc/resolv.conf file and resolve into respective ip address
+
+![dns3](images/dns3.png)
+
+you still can have entry in /etc/hosts file.
+for example, you need to provision test server your own need and don't need others to resolve to test server so he can update /etc/hosts file instead of updating in DNS server
+
+![dns4](images/dns4.png)
+
+what is same host name have different ip address in /etc/hosts file and dns server?
+system will first lookup into /etc/hosts file and resolve to ip in /etc/hosts file 
+
+![dns5](images/dns5.png)
+
+but the order can be changed on /etc/nsswitch.conf file to refer dns server first then /etc/hosts
+
+![dns6](images/dns6.png)
+
+what if we don't have entry in dsn server for some hostname ex: www.instagram.com?
+we can update common well know dsn server 8.8.8.8 hosted by google that knows about all websites on internet.
+
+![dns7](images/dns7.png)
+
+Domain Names:
+the reason they are in www. format,seperated by dot is to group like things together. the last partion of domain name , dot coms, dot net,dot edu etc are top level domains and they represents intent of website.
+
+.com for commercial
+.net for network related
+.edu for educational 
+.org for non-profitable organization
+
+look at the google domain name 
+see the below image to understand the level 
+![domain_names](images/domain_names.png)
+
+subdomain helps in further grouping things together under google 
+www.maps.google.com 
+
+when you try to reach any of domain name example www.apps.google.com?
+your request first hit your organication DNS server,if it don't know who is www.apps.google.com it forward request into intrenet, on internet ip of serving app.google.com may be resolved by multiple dns servers like root dns server then .com dns server 
+
+![domain_names2](images/domain_names2.png)
+
+in order to speed up this resolution,org DNS server cache this ip for sometime 
 
 
+we can talk about domain names in our organization?
+we have different domain names to address different application so we have stardarized like 
+www.web.mycompany.com, www.db.mycompany.com etc
+so if we ping web it will not work as it is not complete domain name 
+
+how to configure to resolve to www.web.mycompany.com when i say web?
+we can add entry calles serach mycompany.com in /etc/resolv.conf so when you ping web you host is intelligent to exclude the search domain if you specify domain in query, you can also provide additinal search domain like below
+
+![domain_names3](images/domain_names3.png)
+
+how the records are stored in DNS server?
+maping hostname with ip address is know A record
+maping hostname with ipv6 address is know as quad record
+maping one name into another name is called CNAME records
+
+![record_types](images/record_types.png)
+
+ping is not right tool to test resolution, use nslookup to query a hostname from DNS server
+nslookup www.google.com but nslookup does not consider entries in /etc/hosts file
+
+dig is another tool to test DNS resolution,it returns more details is stored on server
+did www.google.com
+
+how to configure a host as a DNS server?
+We are given a server dedicated as the DNS server and a set of IPs to configure as entries in the server.
+we will focus on a particular one – CoreDNS.
+CoreDNS binaries can be downloaded from their Github releases page or as a docker image
+$ curl -LO https://github.com/coredns/coredns/releases/download/v1.12.4/coredns_1.12.4_linux_amd64.tgz
+$ tar -zxf coredns_1.12.4_linux_amd64.tgz 
+Run the executable to start a DNS server. It, by default, listens on port 53, which is the default port for a DNS server.
+we put all of the entries into the DNS servers /etc/hosts file. Then, we configure CoreDNS to use that file. CoreDNS loads its configuration from a file named Corefile.
+Here is a simple configuration that instructs CoreDNS to fetch the IP to hostname mappings from the file /etc/hosts. When the DNS server is run, it now picks the IPs and names from the /etc/hosts file on the server.
+
+.:53 {
+    # Use /etc/hosts to resolve hostname
+    hosts /etc/hosts {
+        reload 1m
+        fallthrough
+    }
+ 
+    # Forward unmatched queries to the host's resolver
+    forward . /etc/resolv.conf {
+       max_concurrent 1000
+    }
+    cache 30
+    log
+    errors
+}
+
+CoreDNS also supports other ways of configuring DNS entries through plugins. We will look at the plugin that it uses for Kubernetes in a later
 
 
+Namespaces: As we know containers are seperated from underying host using namespaces.
+
+what is namespaces?
+if your host is house then namespaces are rooms within house that you assign to each of your children. 
+room helps in providing privacy to each child and each child can only see within her room.
+As a parent you have visibility to all rooms in a house.
+
+when we create container, you wanna make sure container is isolated.it doesn't see any other process on host.
+we create seperate isolated space using namespace. Host have visibility to all of process including process running inside container.
+
+![namespaces](images/namespaces.png)
+
+![namespaces2](images/namespaces2.png)
+
+Network namespace:
+host have interface(eth0) to connect to network and it have its route table and ARP table with information of all network.
+
+when container created,we create networkspace for it,that way it has no visibility to any network related information on host. within container it have its own virtual interface(veth0),route table and ARP table
+
+![network_namespaces0](images/network_namespaces0.png)
+
+to create network namespace on linux system, run below commands
+$ ip netns add red
+$ ip netns add blue
+
+$ ip netns --> list network namespaces
+
+To list interfaces inside red or blue network namespace
+$ ip netns exec red ip link --> ip link command executed inside red network namespace and show the interfaces
+or $ ip -n red link --> will do same
+
+![network_namespaces1](images/network_namespaces1.png)
+
+$ route --> list routes on routing table on host network namespace
+$ ip netns exec red route --> list routesm on red network namespace
+
+![network_namespaces2](images/network_namespaces2.png)
+
+let connect two network namespaces:
+we have to create virtual cable to connect two network namespaces
+creating virtual cables and adding into network namespace 
+
+$ ip link add veth-red type veth peer name veth-blue --> connecting virtual cables first
+
+$ ip link set veth-red netns red --> connecting red virtual cable into red network namespace
+
+$ ip link set veth-blue netns blue --> connecting red virtual cable into blue network namespace
+
+assign the ip address into each network namespace 
+
+up the each vitural interface(veth-red and veth-blue)
+
+ping ip of blue network namespace on red, you will able to connect
+
+![virtual_namespaces_connection](images/virtual_namespaces_connection.png)
+
+![virtual_namespaces_connection2](images/virtual_namespaces_connection2.png)
+
+what if we have many network namespaces and how to you enable to communicate each other?
+we can use linux bridge or open vswitch tool to create switch and make connection between multiple network namespaces
+
+create new interface on host for switch and up new interface 
+
+![virtual_interface_on_host](images/virtual_interface_on_host.png)
+
+delete the virual cable created earlier as it is no use 
+$ ip -n red link  del veth-red --> as they paired,if we delete one, other one deleted automatically
+
+creating virtual cables to connect network namespace into switch
+
+![virtual_cables_for_switch](images/virtual_cables_for_switch.png)
+
+attach one into network namespace and other end into switch 
+assign ip address and up them
+
+![virtual_cables_eshtablishment](images/virtual_cables_eshtablishment.png)
+
+how to establish connection between my host to this network namespaces?
+attach the ip address into virtual interface,then able to establish connection between network namespaces and host
+
+![host_to_network_namespaces](images/host_to_network_namespaces.png)
+
+how to reach system on other network from network namespace? from red or blue network namespace into other network outside of host system
+
+our local host system interface is gateway to connect two networks(from private network namespace into outside network)
+
+![network_namespace_to_outside_network](images/network_namespace_to_outside_network.png)
+
+update ip table to get response back from outside network, so outside network will treat request coming from host instead of network namespace 
+
+![ip_table_route](images/ip_table_route.png)
+
+add internet gateway as default route to reach internet
+
+![internet_route](images/internet_route.png)
+
+how about connection from outside network into network namespace on host?
+we add update ip table like any traffic coming on port 80 on host forwarded into particular network namespace
+
+![outside_into_host](images/outside_into_host.png)
+
+Docker networking --> i will skip this as of now, not required for cka course
+
+Container Networking Interface --> i will skip this as of now, not required for cka course
+
+Cluster Networking:
+Each node have interface(eth0),connected to network,assigned with ip address and mac address.
+The ports should be opered on master node and worknode as show in below image
+
+![ports_on_master_and_worker](images/ports_on_master_and_worker.png)
+
+when you have multiple master node, ports need to be opened on master nodes are shown in below image 
+
+![two_master_node_ports](images/two_master_node_ports.png)
+
+![commands_for_networking_setup](images/commands_for_networking_setup.png)
+
+Question about deploying network plugin on cluster:
+we have used weave-net as an example, please bear in mind that you can use any of the plugins which are described here:
+
+In the CKA exam, for a question that requires you to deploy a network addon, unless specifically directed, you may use any of the solutions described in the link above.
+
+https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+https://kubernetes.io/docs/concepts/cluster-administration/networking/#how-to-implement-the-kubernetes-networking-model
+
+The links above redirect to third-party/vendor sites or GitHub repositories, which cannot be used in the exam. 
+
+NOTE: In the official exam, all essential CNI deployment details will be provided.
+
+Pod Networking:
+
+how pods communicate with each other?how you access service within cluster or outside of clustr?
+kubernetes is not comeup with built-in solution to achieve this. it expect networking solution that solve this challenges.
+kubernetes told requirements for pod networking so any networking solution achieve those requirements we can use in cluster
+ 
+![networking_model](images/networking_model.png)
+
+we have many netwoking solution available to achieve this by fulfilling kubenetes requirements
+that are flannel,cilium,vmware NSX etc
+
+we can use our network namespace knowledge such switching,routing,assigning ip, establishing connection between network namespaces
+
+![commands_for_networking](images/commands_for_networking.png)
+
+consider all nodes are system and impletement pod networking solution
+
+when containers are created,kubernetes create network namespaces for them so we need to establish connection between pods, pod on one node into pod on another node 
+
+create bridge network on each node and bring them up
+
+![bridge_network](images/brigde_network.png)
+
+![bridge_network2](images/brigde_network2.png)
+
+assign subnet into each bridge network and set ip address for bridge interface 
+
+![ip_address_into_bridge](images/ip_address_into_bridge.png)
+
+connecting pods into bridge and establishing communication between pods
+
+![establishing_communication](images/establishing_communication.png)
+
+adding route to enable communication between pods from one node into another node 
+
+![establishment_on_different_nodes](images/establishment_on_different_nodes.png)
+
+executing the script to make network changes is manually, it will not work when large env and pods are getting created on reach second.
+when container created, container network interface(CNI) tell kubernetes to call the script
+
+container runtime is resposible for creating container, when container are create,container runtime will look at CNI and run script with container name and namespace
+
+![cni_script](images/cni_script.png)
 
 
+Container Networking Interface in Kubernetes:
+CNI defines the resposibilities of container run time 
+As per CNI, container run time is resposible to 
+  create network namespace
+  identify and attaching those namespaces into right network by calling right network plugin 
+  invoke network plugin(bridge) when container is added
+  invoke network plugin(bridge) when container is deleted
+  
+
+where do we configure CNI plugin to use?
+configure container runtime to use installed CNI plugin in /opt/cni/bin to create network namespace and configure netwrok settings. 
+
+which plugin to use and how do use is configured in /etc/cni/net.d directory,there may be multiple configuration files on this directory to configure each plugin 
+
+![configuring_cni](images/configuring_cni.png)
+
+if you look at the /opt/cni/bin, you can see the all executable files of network plugin 
+
+container run time will look into /etc/cni/net.d directory to know which network plugin to use
+if directory have multiple file, choose one based on alphabetical order
+
+![viewing_cni](images/viewing_cni.png)
+
+![viewing_cni2](images/viewing_cni2.png)
+
+Before going to the CNI weave lecture, we have an update for the Weave Net installation link. 
+They have announced the end of service for Weave Cloud.
+
+use the below latest link to install the weave net: -
+kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+
+CNI weave:
+weave CNI deploy agent on each node , they communicate with each other to exchange information about nodes, networks and pods. each agent store the topology of entire network where they know pods and their ips on the other node.
+single pod can attached to multiple bridge network,example pod attached to view bridge as well as docker bridge , which one to choose is depends on route configured on container 
+
+when package send to one pod into another pod on another node, weave intercept the package and identify its on seperate network, encapsulate this package with new source and new destionation,sends it across network once on otherside retrieve the package and decapsulate it,route the package into right pod 
+
+package send by the pod  
+![package_send_by_pod](images/package_send_by_pod.png)
+
+encapsulate package by weave network plugin
+![encapsulate](images/encapsulate.png)
+
+send encapsulated package into other node 
+![send_to_other_node](images/send_to_other_node.png)
+
+decapsulate by weave network plugin 
+![decapsulate](images/decapsulate.png)
+
+send to destionation pod 
+![send_to_dest_pod](images/send_to_dest_pod.png)
 
 
+deploy weave on kubernets:
+
+![weave_deploy](images/weave_deploy.png)
+
+![weave_deploy2](images/weave_deploy2.png)
+
+IPAM(CNI) --> IP address management:
+
+how the virtual briage get assigned ip and how pods will get assigned ip?
+CNI plugin is resposible to assign ip to virtual briade and pods 
+
+how to we manage these ips? we don't to assign duplicate ips?
+create file which have list of ips and have script to call and assgine the ip into pod
+![list_of_ips](images/list_of_ips.png)
+
+instead of coding our self to achieve this, CNI comes with two built-in plugins 
+  DHCP
+  host-local
+![invoke_built_in_plugin](images/invoke_built_in_plugin.png)
+
+still our resposible to invoke that plugin in our script
+get the built-in plugin details from CNI plugin configuration and invoke 
+![get_built_in_plugin_details](images/get_built_in_plugin_details.png)
+
+Service Networking:
+
+you rarely configure pods to communicate each other.
+when you want to access other pod, you would always use the service.
+
+how the services getting ip address and how it make available across cluster? 
+kubeproxy runs on each node,it watches for changes from kube-apiserver. when service get created
+unlike container, service are not created on each node, service are cluster wide,there is no server or service
+really listening on service. 
+
+how it make available accross cluster?
+when we create service,it get assigned ip address from pre-defined ip range.
+kubeproxy on each node get that ip address and create forwarding rule on each node.
+create forward like any traffic comming into service ip should go into ip of pod.
+
+how are these rules created?
+kube-proxy supports different ways userspace,ipvs and default one ip table
+proxy mode option can be set by using kube-proxy configuration.
+
+![rule_types](images/rule_types.png)
+
+how the service getting ip address?
+when create service,ip get assigned into service and the ip range is set on kube-api server using service-cluste-ip-range option 
+
+![service_ip_range](images/service_ip_range.png)
+
+search for name of service all routes crated by kube-proxy have comment with name of service on it.
+
+![forwarding_rule](images/forwarding_rule.png)
+
+in the kube-proxy.log we can see which type it uses,added entry when service created
+
+![kube_proxy_log](images/kube_proxy_log.png)
+
+DNS in kubernetes:
+when kubernetes deployed, by default kube DNS will be deployed.
+
+when service get creates, kube DNS create DNS record with service name to ip address of service.
+Now within the cluster any pod can reach to service usign name of service.
+As test pod and web pod service in same namespace,test pod can reach web pod using name of service 
+![dns_design1](images/dns_design1.png)
 
 
+if service in different namespace, you have mention name of namespace at end of service name to access service.
+for each namespace kube DNS create sub domain with its name , all service pods are group together within subdomain in the name of namespace and all service pods are further group together into another subdomain called svc. finally all pods and services are group together into root domain for cluster which is set to cluster.local by default 
+
+you can access service using http://<name-of-service>.<namespace>.svc.cluster.local, that is the fully qualified domain name for service.
+
+![dns_design2](images/dns_design2.png)
+
+for pods also DNS record created but create with ip address by replacing dot with hypen
+
+![dns_design3](images/dns_design3.png)
+
+core DNS in kubernetes:
+
+how kubernetes implements DNS?
+
+Prior to kubernetes vesion 1.12,the DNS server implemented by kubernetes was know as kube DNS.
+from kubernetes version 1.12 version,kubernetes recommend to use core DNS as DNS server in cluster.
+
+Core DNS server deployed as pod in a kube system namespace in kubernetes cluster.
+They are deployed as two pods for redundancy as part of replica set.
+the core DNS pod execute coredns executable, which require configuration file(/etc/coredns/Corefile).
+within this file, number of plugins are configured, plugins are configured to handing error,reporting monitoring
+metrics cache etc. core dns works with kubenetes plugin and cluster.local is a top level domain name of the cluster,
+so every record in core dns server fall under this domain.
+pods option inside kubernetes is responsible for creating record for pods in cluster.
+
+![coredns1](images/coredns1.png)
+
+For example , any pod try to reach to www.google.com,it forwarded to nameserver specifiec on /etc/resolv.conf file.
+/etc/resolv.conf file is set to use nameserver from kubernetes node
+
+this configuration passed as configmap object into coredns
+
+![coredns2](images/coredns2.png)
+
+when pod got created,coredsn create record in dns nameserver. when one pod want to talk to another pod by going into dns nameserver.
+
+when we deploy DNS solution, it also create a service and make it available to other components on cluster.
+the ip of service mentioned on /etc/resolv.conf as nameserver. Adding ip of coredns service into pod done by kubelet automatically when the pods are created.
+
+![coredns3](images/coredns3.png)
+
+![coredns4](images/coredns4.png)
 
 
+Ingress: you already know what is ingress and why we use the ingress,same explained in video.
+
+ingress helps your users to access your application using single externally accessible URL.
+configure to route traffic to different service based on url path and also implement SSL solution
+
+ingress deployment:
+ deploy ingress controller provided third party like nginx ingress controller,HAproxy traefik etc
+ once ingress controller deployed, then only we can create ingress and use it.
+ By default no ingress controller deployed on cluster.
+
+![ingress_deployment](images/ingress_deployment.png)
+
+![nginx_ingress_controller](images/nginx_ingress_controller.png)
+
+![nginx_ingress_service](images/nginx_ingress_service.png)
+
+![nginx_ingress_sa](images/nginx_ingress_sa.png)
+
+![ingress_resource1](images/ingress_resource1.png)
+
+![ingress_resource2](images/ingress_resource2.png)
+
+Rewrite option in ingress:
+The target applications are not configured with /watch or /wear paths. They are different applications built specifically for their purpose, so they don't expect /watch or /wear in the URLs. And as such the requests would fail and throw a 404 not found error.
+
+To fix that we want to "ReWrite" the URL when the request is passed on to the watch or wear applications. We don't want to pass in the same path that user typed in.
+
+For example: replace(path, rewrite-target)
+
+In our case: replace("/path","/")
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: critical-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /pay
+            pathType: Prefix
+            backend:
+              service:
+                name: pay-service
+                port:
+                  number: 8282
+
+In another example given here, this could also be:
+replace("/something(/|$)(.*)", "/$2")
 
 
+Gateway API:
+
+ingress limitation:
+earlier when we talk about ingress,single ingress handing two service to distribute based on path or host.
+
+what if each service are completely manage by different team or even different company?
+* the underlying ingress resource is single and only one team managed by at a time.
+  ingress face challenge in multi-tenancy enviroment like they have to co-ordinate to handle single ingress resource and might lead to conflics 
+
+![ingress_limitation1](images/ingress_limitation1.png)
+
+* ingress only support http based rule such host matching, path matching, other like TCP , UDP based rules are not supported
+ 
+![ingress_limitation2](images/ingress_limitation2.png)
+
+Gateway:
+Infrastructure provider provides the gateway class which defines what is underlying network such as nginx,traffic or other local load balancers. 
+Cluster operator install the gateway(gateway require gateway controller) then we have http route,tcp route and GRPC route created by application developer.
+
+![gateway_api1](images/gateway_api1.png)
+
+![gateway_api2](images/gateway_api2.png)
+
+![routes_on_gateway_api](images/routes_on_gateway_api.png)
+
+we can talk about below points when someone asked about 
+  difference between ingress and gateway api? or
+  advantages of gateway api? or 
+  disadvantages of ingress? or 
+  why we move into gateway api?
+
+In gateway api, we no need to mention annotations to apply ssl certs, all configuration will go under spec.
+unlike in ingress, we have use annotation specific to ingress provider like nginx ingress have different annotation which will not work for other ingress controller.
+
+![gateway_api3](images/gateway_api3.png)
+
+In gateway api, we can define how much % of traffic goes to which rules under spec, no extra annotations required.
+
+![gateway_api4](images/gateway_api4.png)
+
+In gateway api,we can mention rewrite rule configuration centrally under responseHeaderModifier.
+
+![gateway_api5](images/gateway_api5.png)
+
+Different companies are implementing the gateway controller and below is status
+
+![gateway_implementation_status](images/gateway_implementation_status.png)
+
+Section 10:
+Design and Install a Kubernetes Cluster
+
+Designing a Kubernetes Cluster:
+
+Before implement kubernete cluster,we must ask below question first
+
+![k8s_design1](images/k8s_desgin1.png)
+
+![k8s_design2](images/k8s_desgin2.png)
+
+![k8s_design3](images/k8s_desgin3.png)
+
+![k8s_design4](images/k8s_desgin4.png)
+
+![k8s_design5](images/k8s_desgin5.png)
+
+![k8s_design6](images/k8s_desgin6.png)
+
+In the exam perspective, no need to remember these numbers.
+
+Choosing infrastructure:
+
+we have two types of soluation for setting up cluster
+
+Turnkey solution --> you will provision vms,configure vms,use your script to deploy cluster and you maintain vms yourself.
+Eg: kubenetes on aws using KOPS
+
+hosted solutions(managed solutions):
+use kubernetes as server from provider like aws, azure,gcp
+Provider provisions vms
+Provider install kubernetes
+Provider maintains VMs
+Eg: Google container engine
+
+Turnkey solutions:
+Openshift: openshift is a popular on prem kubenetes  platform by Redhat.
+openshift is open source container platfrom and it built on top of kubernetes.
+It providers a set of additional tools and nice GUI to create and manage kubernetes constructs and easily integrate with ci/cd pipelines.
+
+Cloud Fondry container runtime: it is open source project from cloud fondry that helps in deploying and managing highly available  kubernetes cluster using their open source tool called bosh.
+
+VMware cloud PKS is another solution
+
+vagrant provides a different scripts to deploy kubernetes on different cloud service providers.
+
+All of these solution helps to deploy and manage kubernetes privately within your organition 
+
+Hosted solutions:
+Google kubernetes engine: is very popular kubernetes as a service offering on google cloud platform
+
+openshift online: is offering from redhat where you gain access to a fully functional kubernetes.
+
+Azure kubernetes service:  it is from azure for kubernetes
+
+Amazon elastic kubernetes service: kubernetes solution from aws
+
+Configuring High Availability:
+Configure two master nodes on production to have high availability.
+
+when communicate with kubeapi server using kubctl utility,to which master node request will go?
+we need to configure load balancer infront of master nodes, lb will forward request into any one of master node
+
+when we have controller and scheduler on both master nodes, which controller or scheduler will be used to schedule or create pod?
+master nodes run by active and standby mode.
+
+who decide which one is active and standby?
+this is decide by leader election process.
+
+when controller manager configured, we set the leader elect option to true,with when controller manager process start,it try to gain the lock on endpoint object on kubernetes named as kube-controller-manager endpoint.
+whichever controller process first update the endpoint with its information,gain the lock and become active and other one is standy. it holds the lock for the lease duration specified using lease duration option,which by default set to 15 seconds.the active process then renew the lease every 10s which is default value for the option.
+Both the processes try to become the leader every two seconds set by leader elect retry period option.
+
+![ha_configuration1](images/ha_configuration1.png)
+
+![ha_configuration2](images/ha_configuration2.png)
+
+similar setup for scheduler also.
+
+ETCD:
+for etcd, there are two topologies that can be configured in kubernetes.
+
+etcd is part of master node and this topology called as stacked topology.
+
+![ha_configuration3](images/ha_configuration3.png)
 
 
+etcd is seperated from master node, deploy on external server and update etcd endpoints on kubeapi to communicate.
+this is topology called external etcd topology.
+
+![ha_configuration4](images/ha_configuration4.png)
+
+![ha_configuration5](images/ha_configuration5.png)
 
 
+ETCD in HA:
+
+you have three servers,etcd running on all three,how does etcd ensure data on all nodes are consistent?
+with read, it is easy as same data available on all nodes.
+
+what if two write requests coming on two different instances?
+only one of the instance is resposible to write data and send the update data into other two servers.
+Internally two nodes elect the leader among them,on total instances one node become leader and other nodes becomes followers. if write come into leader node,leader node processes data and send a copy of updated data into other nodes.
+if write come into non-leader node,non-leader node will redirect request into leader node and leader node repeate same.
+
+![etcd_ha1](images/etcd_ha1.png)
+
+how do they elect the leader?
+ETCD implement distributed consensus using RAFT protocol,
+RAFT algorithm uses random timer for initiating requests.
+random timer kicked off into all three node,the first one finish the timer sends out a request to other nodes requesting permission to be the leader,the other managers on receiving the request responds with their vote and node assumes the leader.
+leader node sends out notification at regular interval to other master nodes informing them that is continuing to assume the role of leader. In case other nodes don't recieve notification from leader at some point in time,which could either be due to leader going down or network connectivity,the nodes initiate a relection process among themselves and new leader identifed 
+
+if leader not able to write into any one of node, is leader node mask write as completed?
+Yes leader mask as write completed as data write into majority nodes.
+In case of three nodes, majority is two so if data can be written on two nodes then the write is considered as completed.
+when third node come online,data to be copied into that node as well.
+
+what is majority when we have more nodes?
+kubernetes use quorum to calculate majority
+quorum=N/2+1 
+quorum is the minimum number of nodes that must be available for cluster to fuction propertly or make successfull write.
+
+3 nodes
+3/2+1 --> 2.5 so consider whole number that is 2
+
+![quorum](images/quorum.png)
+
+having two instance does not mean it doesn't offer any real value as quorum can't be met,which is why it is recommended to have a minimum of three instances in an etcd cluster. that way it offers a fault tolerance at least one node goes down.
+
+fult tolerance column give number of nodes that you can offer to lose while keeping the cluster alive.
+
+![quorum2](images/quorum2.png)
+
+when deciding on the number of master nodes, it is recommended to select an odd number as highlighted in table like 3 5 7
+
+if we select even number of nodes and make split to configure equal number of nodes on different network segment,chances of failing is more as per quorum calcutation
+
+![quorum3](images/quorum3.png)
+
+odd number of nodes will give good fault tolarence nodes
+
+![quorum4](images/quorum4.png)
+
+
+it is required to configure initial cluste peer to know it is part of cluster and where its peers are there
+
+![etcd_conf](images/etcd_conf.png)
+
+use etcdctl to write and retrieve data
+ etcdctl put name john --> writing data
+ etcdctl get name --> getting value of name key
+ etcdctl get / --prefix --key-only --> getting all keys on etcd.
+
+# Section 11: Install kubernetes the kubeadm way
+
+Deployment with kubeadm --> introduction
+steps:
+* creation of vms,choose one as master and remaining as worker nodes.
+* install containerd on all nodes
+* install kubeadm tool on all nodes --> kubeadm tool helps us to bootstrap the kubernetes solution by installing and configuring all required components on right node and right order.
+* initialize master node,once the master node initialized and before joining the worker nodes to mastert, you must ensure pod network are meet.
+* join the worker nodes into master node
+
+![kubeadm_steps](images/kubeadm_steps.png)
+
+https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+
+Deployment with kubeadm -- Provision VMs with vagrant
+they have vagrant file and use vagrant command to provision the vms
+
+* install kubeadm using below document,also install kubelet,kubectl on all nodes
+https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+* install containerd on all nodes
+https://kubernetes.io/docs/setup/production-environment/container-runtimes/#containerd
+https://github.com/containerd/containerd/blob/main/docs/getting-started.md 
+if we are using apt to install containerd then we have to follow below link and metion only containerd.io package name
+  https://docs.docker.com/engine/install/debian/
+* using driver ---> cgroup driver or systemd driver, any one we can use but ensure both kubelet and containerd must use same driver
+* check your init system on your linux distribution 
+  ps -p 1 --> if it is systemd , then we are going to use systemd
+* from kubernetes 1.21 onwards, by default kubelet will use systemd as driver, we have set only for containerd 
+* use below document to make containerd to use systemd as driver(on all nodes)
+  create /etc/containerd directory
+  generate default configuration by using below command
+   $ containerd config default and make required changes using below link
+  https://kubernetes.io/docs/setup/production-environment/container-runtimes/#containerd-systemd
+  $ cat /etc/containerd/config.toml | grep -i SystemCgroup -B 50 --> checking configuration after update
+* restart containerd
+  $ systemctl restart containerd
+* initializing controll plan --> it install all control plan components
+  https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#initializing-your-control-plane-node 
+  $ sudo kubeadm init --apiserver-advertise-address <master-node-ip> --pod-network-cidr "10.244.0.0/16" --upload-certs
+
+  the ip to pods are assigned from 10.244.0.0 cidr block, we can set to other cidr block also,this one is default
+  this will go and generate the certs for kubeapi server,etcd etc
+  at the end of output, tell to copy admin.config file to communicate with cluster
+* Deploy pod network to the cluster to make master node ready,then you can join any number of worker nodes using kubadm join command showed at end of console output
+* install pod network add-on 
+  https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network
+  use any one of pod network add-on from support network solution
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/#networking-and-network-policy
+  we are going to use Flannel and click on link to take into documentation.
+  https://github.com/flannel-io/flannel#deploying-flannel-manually
+  update your pod network cidr in net-conf.json section to make sure to use same pod network cidr 
+  $ kubectl apply -f kube-flannel.yml
+  $ kubectl get pods -n kube-flannel 
+  $ kubectl get nodes --> now master node must be come up to ready state
+* use the kubeadm join command given from master node console and join the worker nodes.
+  $ kubectl get nodes
+  deploy any pod to test to check our cluster is ready
+  $ kubectl run nginx --image=nginx
+  $ kubectl get po 
+
+# Section 14: Troubleshooting --> this section helps to clear interview
+ it covers 
+  Application failure 
+  Control plan failure
+  Worker node failure
+  Networking
+
+Application failure 
+ * Understanding the arch is important, then we can debug how traffic is going on and how many compontents on our application
+* ex: user reported not able to access application.
+  application have web server and db
+ 
+  check the applicaiton runnning on service port 
+   curl http://web-service-ip:node-port
+
+  if not able to connect or get response,check the endpoint configured on service,
+  check is application running on endpoint.
+
+  compare the selectors configured on service
+
+  check the status of pods, logs, events
+  $ kubectl get pod
+  $ kubectl descrip po <name-of-pod> --> checking events of pod
+  $ kubectl logs <name-of-pod>
+ 
+  check the db service like how we checked for web service, selectors are matching, enpoint are correct
+  
+  check the status,logs and events of db pod
+  
+  https://kubernetes.io/docs/tasks/debug/debug-application/  --> this have links to other debug documents 
+
+* Control plan failure
+  
+  check the pods of control plan on kube-system namespace
+
+  $ kubectl get pods -n kube-system
+
+  if control plan components are deployed on system level, check the status of services
+  $ service kube-apiserver status
+
+  $ service kube-control-manager status
+ 
+  $ service kube-scheduler status
+
+  $ service kubelet status
+  
+  $ service kube-proxy status
+
+  $ kubectl logs kube-apiserver-master -n kube-system
+
+  same way check the logs for other control plan components 
+
+  if case of service configured on node
+  $ sudo journalctl -u  kube-apiserver --> checking the logs of kube-apiserver 
+
+  $ kubectl get nodes
+
+  $ kubectl cluster-info dump --> to get detailed information about the overall health of cluster
+
+  $ kubectl describe node <name-of-node>
+
+  $ kubectl get node <name-of-node> -o yaml
+
+ https://kubernetes.io/docs/tasks/debug/debug-cluster/ 
+
+* worker node failure
+
+  $ kubectl get nodes
+  $ kubectl describe node <name-of-node>
+  
+  each node have conditions section, it show why my node is failed, check for which it become true 
+  if node is running out of disk space, OutOfDisk flag set to true
+  if node is out of memory, MemoryPressure flag set to true
+  if disk capacity is low, DiskPressure flag set to true
+  
+  when worker node stop communicate with master node,may be due to status of one these flags set unknown state
+
+  checking status of node itself helps 
+   $ top 
+
+  check disk space 
+   $ df -h 
+
+  check the status of kubelet 
+  $ service kubelet status 
+
+  check the kubelet logs
+  $ sudo journalctl -u kubelet --> checking logs of kubelet service 
+
+  check the kubelet certificates 
+  $ openssl x509 -in /var/lib/kubelet/worker-1.crt -text 
+  check certs are issued by right CA,certs are not expired,check the subject for organization(O) 
+
+Network troubleshooting:
+
+  first we have pods where you application is running
+  second service --> provide stable way to access group of pods
+  coreDNS --> translate service name into actual ip address of service
+  CNI(container network interface) --> assigning ip address and configuring networking interfaces
+  kube-proxy --> runs on every node and it is resposible for keeping network rules updated
+  
+
+  when your application is not reachable, service is first place to look into it.
+  Step 1:
+  check the pods are up and running because service will forward request only running pods
+  $ kubectl get po -l app=hostnames --> checking the pods status which have app:hostnames label
+
+  if your seeing issue in number of restart or showing as pending or failure, use below command to debug more
+
+  $ kubectl logs <name-of-pod> -n <namespace>
+  
+  $ kubectl describe pod <name-of-pod>
+
+  Step 2: try reaching pods directly by taking ip 
+  $ kubectl get po -l apps=hostnames -o wide --> you will get ip address
+  
+  create temp pod and try to reach them 
+  $ kubectl run -it --rm --restart=Never busybox --image=busybox -- sh
+    for ip in ip1 ip2 ip3;do
+       wget -qO $ip:port;done
+
+ Step 3: check the serice assosicate with that application 
+ selector must be match with labels of pods to forward the request
+ check port of pod and port configured on service
+
+ $ kubectl get service <name-of-service> -o yaml --> give attention to selector and compare with lables of pod
+
+ check the port details configured on service and check pod running application on same port 
+
+ check the endpoint slices associated with your service
+ $ kubectl get endpointslices -l kubernet.io/service-name=<name-of-servie> -n <name-of-namespace>
+
+ Step 4: troubleshoot the coreDNS problems 
+ if dns are not working your application won't be able to each other by names
+
+ coreDNS runs as pod in kube-system namespace.
+ kube-dns service exposes these pods on port 53. pods-resolve.conf point into kube-dns service ip
+ 
+ coredsn file is supper impart which come from configmap,it defines how exactly coreDNS should behave
+
+ ![coredns_problems](images/coredns_problems.png)
+
+  /etc/resolv.conf in coredsn config file connect the external dns server if it not able to find records on itself
+
+  $ kubectl get pods -n kube-system -l k8s-app=kube-dns --> checking status of pod, even if you don't known the label also is fine, we will get list of pods running in kube-system namespace
+
+  check the endpoints on kube-dsn service
+  $ kubectl get endpointslices -l k8s.io/service-name=kube-dns -n kube-system 
+  if don't see the endpoint then this service is not finding coreDNS pod
+
+  check the resolv.conf file in your application pod as dns server(ip of kube-dsn service are set) and search paths also impartant
+  $ kubect exec -it <pod-name> -- cat /etc/resolv.conf
+  
+  test dns resolution directly from the pod 
+  $ kubectl exec -it busybox -- nslookup kubernetes.default.svc.cluster.local
+
+  also test actual application service dns 
+  $ kubectl exec -it busybox  -- nslookup my-app-service.default.svc.cluster.local
+
+  CNI plugin is very impartant for networking, without these your pods will not get the ips
+  Flannel is very popular and simply to install 
+  $ kubectl apply -f <path or url of defition file>
+
+  calico is more advanced option and widely recognized for its robust network policy features and strong performance 
+  download yml and apply
+  kubectl apply  -f calico.yml 
+
+ check the network plugin Daemonset pods are running in their respective namespace
+  $ kubectl get pod -n kube-flannel 
+ 
+  $ kubectl logs <pod-name> -n kube-flannel 
+
+  $ kubectl describe pod <pod-name> -n kube-flannel
+
+
+  step 5: check about kube-proxy
+
+  check the status of kube-proxy pod
+  $ kubectl get pods -n kube-system
+  
+  $ kubectl logs <pod-name> -n kube-system 
+ 
+  check the config map which is used by kube-proxy
+  $ kubectl get cm kube-proxy -n kube-system -o yaml
+  
+ check the iptable rules
+  if your using ipvs mode(configured on config map),use ipvsadm -ln 
+  $ ipvsadm -ln --> shows how the service load balacing across the pods 
+
+ ![trobleshootin_points](images/trobleshooting_points.png)
+
+JSON PATH in kubernetes:
+
+we use kubectl utilty to read and write object into cluster.
+ when we are reading object details, kubeclt interact with kube-apiserver, kube-apiserver send response in json format,kubectl show only impartant details on readable format
+
+$ kubectl get node  --> give high level status of node
+$ kubectl get node -o wide --> some more information 
+
+using jsonpath in kubernets
+* identify the kubectl command like kubectl get nodes or kubectl get pods
+* familier with json output
+  $ kubectl get pods <name-of-pod> -o json
+* form the json path query,getting image details of pod
+   .items[0].spec.containers[0].image 
+* use the jsonpath query with kubectl command
+  $ kubectl get pods -o=jsonpath='{.items[0].spec.containers[0].image}'
+
+ ![jsonpath_in_kubectl](images/jsonpath_in_kubectl.png)
+
+we can add multiple json queries into single command and get output
+ $ kubectl get nodes -o=jsonpath='{.items[*].metadata.name} {.items[*].status.capacity.cpu}'
+
+  getting the name of node and cpu capacity details at a time
+  
+ $ kubectl get nodes -o=jsonpath='{.items[*].metadata.name} {"\n"} {.items[*].status.capacity.cpu}' --> to print in new line
+
+we can use custom column option to print details with our own column name
+ $ kubectl get nodes -o=custom-columns=NODE:.metadata.name,CPU:.status.capacity.cpu  --> no need to mention the items,by default custom-columns will go through the each items
+
+we can also sort the output based on josn query
+$ kubectl get nodes --sort-by=.metadata.name 
+$ kubectl get nodes --sort-by=.status.capacity.cpu 
 
 
  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

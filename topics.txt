@@ -1,0 +1,45 @@
+complete and practice labs with below order
+
+complete deploy kubernetes using kubeadm video --> done
+have commands to be handy to create --> see 0.kubectl_imparative_commands file and revise commands -->
+  pod
+  deployment
+  namespace
+  configmap
+  secret
+  statefulnet
+
+Troubleshooting section(notes are written,revise it before exam) --> completed
+Troubleshooting section (direct labs) --> completed
+deploy kubernetes using kubeadm lab (i also noted points from video on steps to follow, revise it before exam) --> done 
+cluster maintainance labs --> done
+upgrade cluster solution video --> done 
+networking labs --> done 
+application lifecycle management(configuration comes here) labs --> done
+   rolling update and rollback
+   commands and arguments
+   configmap and secret
+   HPA
+   VPA
+   Modifying CPU resources in VPA
+scheduling labs --> 
+  manual scheduling
+  selectors and labels
+  taint and toleration
+  node selector and node affinity
+  resource request and limit
+  daemonset
+  static pod
+  multiple schedulers
+  configuring scheduler profiles
+  admission controller
+  validatin and mutaing admission controller
+services labs --> 
+  learn to create service for deployment 
+  may be service networking cover this service concepts 
+storage labs(have less portion) -->
+  pv and pvc
+  storage class 
+practice questions given on chatgpt -->
+
+

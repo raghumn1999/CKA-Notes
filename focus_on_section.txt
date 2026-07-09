@@ -1,0 +1,888 @@
+
+Notes to revise before exam:
+
+set the alias to kubeclt first
+  alias k=kubectl
+if your terminal don't have auto completion, search kubernetes document on google,
+ in search tab, search kubectl cheat --> click on cheat sheet --> copy and execute first source command
+
+kubectl replace -f <path-to-defintio-file> --force  --> this command saves lot of time because it will delete existing resource and create new resouce using definition file
+
+kubectl replace -f defition-file-1 -f definition-file-2 --force  --> if we want to delete and deploy more than one resource at a time
+
+kubectl get -n namespace deploy --> use this format, becasue if you need to check on pod on same namespace, remove deploy on end, add po, only one word edit to get details on other resouce, not need to type entire command
+
+kubectl get -n namespace ep --> checking endpoints on namespace, this will tell services able to reach pod endpoints
+
+kubectl config set-context --current --namespace=<name of namespace> --> update namespace in kubeconfig file
+
+Applicatin failure practice:
+* first start checking the labels, ports in pods are matching with service?
+  just check the endpoints of serive and ip and port with pod ip and port
+  $ kubectl get -n namespace ep
+  if we get none as enpoint then service not able to reaching to po
+* second know how they are created the resouce, is it as pod or deployment?
+k get deploy -n namespace 
+* Generate yaml for deploy or pod on how get deployed?
+k get deploy -n namespace deployment-name
+* check the db configuration used in web app is correct and compare db configuration given in problem statement with yaml configuration
+* we have to use name of service which is created for pod,check name used on pod configuration
+* check the coredns is up and running ,if not start debug
+* last check cni plugin
+
+Control plan failure:
+
+1) they tell to scale replicas into deployment and check is pods are scalled,if not then cluster components have issue.
+   describe deployment,replicaset then check status of po
+   kubectl describe deploy <name-of-deployment> --> get to know if deployment have issue
+   kubectl get rs  --> getting replicaset
+   kubectl describe rs <name of rs > --> get to know if replicaset have issue
+   kubectl get po -> if pod in pending state,check is the node is assigned, it is because of cluster scheduler issue, or any other control plan component issu3
+
+2) check how are deploy like as po or on system level
+
+  if deployed as pod, check all pods are up and running
+
+  if kube-control-manager is failed, check the logs , same for other pods
+ 
+  kubectl logs -n kube-system <pod-name> --> it print the why that is failing
+3) go to /etc/kubernetes/manifests folder, all components files will be available here
+  update respective component file and save, automatically pod will be reployed
+  then check for logs
+4) All certs are mounted into kubecontrol manager is using volume with same path on system, 
+   if logs say not able to load cert, check the which volume is mounting that path and update path correctly 
+
+Worker node failure:
+
+worker node issue 1:
+get the status of nodes
+  $ kubectl get nodes --> check which node status is not ready
+  $ kubectl describe node <node-name> --> check events, check if any error are showing
+  if events are normal,login into that node
+  ssh node01 --> you will able to login 
+   
+   first thing we need to check on worker node is kubelet
+   $ service kubelet status --> if it is inactive , start it
+   $ service kubelet start     
+  
+  go back to control plan and check nodes status again
+
+worker node issue 2:
+  follow same steps still before login
+
+  $ ssh node01
+
+  check the status of kubelet. 
+  $ service kubelet status  
+  if it is showing activating and existing with exit code
+  check the logs
+   
+  $ journalctl -u kubelet --> shows the logs for servic
+ 
+  check the kubelet.conf file which is file used by kubelet to communicate with kube-apiserver
+  if configurations are correct, then check the config.yaml
+ 
+  check the config.yaml in /var/lib/kubelet/config.yaml --> path you have to remember
+  configuration to kubelet is passed from this config.yaml file
+
+  check the configuration like cert and other, correct and restart the service
+  $ service kubelet restart
+  $ service kubelet status
+  
+  go back and get the status of nodes
+
+worker node issue 3:
+  control plan endpoint to register is https://controlplane:6443 ,
+
+  login into server
+  check status of kubelet service , if is running check for logs
+  $ journalctl -u kubelet --> go to end of logs, then trace back from last to backward
+
+  here issue is control plane endpoint --> control plane listen on 6334 
+   
+  check configuration in kubelet.conf file in /var/kubernetes/kubelet.conf 
+  update control plane endpoint
+  restart the kubelet service 
+    $ service kubelet restart
+
+Troubleshoot network:
+
+
+
+  
+**Deploy kubernetes using kubeadm:**
+
+1) install kubeadm, kubelet and kubectl with 1.35.0-1.1 on both control plane and node01.
+  
+  search as install kubeadm on google
+  click on kubernetes document which given on install kubeadm as sentence
+  staring only it mentioned  as below
+   installing kubeadm(kubernetes v1.35)
+   installing kubeadm(kubernetes v1.34)
+   installing kubeadm(kubernetes v1.33)
+   installing kubeadm(kubernetes v1.32)
+  if they asked to installl 1.35.x choose v1.35 then like select the link based on version asked on question.
+* come down and see install kubeadm,kubelet and kubectl section
+* simple follow the command 
+  while installing kubeadm,kubelet and kubectl, mention the particular version
+
+   sudo apt-get install kubeadm=1.35.0-1.1 kubelet=1.35.0-1.1 kubectl=1.35.0-1.1
+
+  stop here only, don't execute next command, installation done
+
+2) installing containerd on all nodes
+* search for kubeadm to create cluster kubernetes document
+* go to container runtime, click on click and choose containerd and install conatinerd 
+  use sudo apt-get install command to install containerd
+* generate config.toml
+  $ mkdir /etc/containerd/
+  $ containerd config defult --> this command will generate the config.toml file,then you can proceed with updating below changes
+* Configuring the systemd cgroup driver on below file(present settings and file on document)
+  /etc/containerd/config.toml
+* make sure to restart containerd
+  $ sudo systemctl restart containerd
+* update settings recommended by network configuration section on same page
+
+3) search for kubeadm init command, search apiserver and pod-network option
+  
+  get the ip address by from the interface which your going to use
+  $ ip add  --> shows the interfaces, choose the ip address from interface which your planing to configure
+    
+  output:
+   1: enp0s8: <BROADCAST>
+   link
+   inet 192.168.56.11/24     
+  
+   take only ip address, ignore the subnet
+
+  you will get entire option details
+  $ kubeadm init --apiserver-advertise-address <master node ip> --pod-network-cidr "10.244.0.0/16" --upload-certs
+  
+  for cidr choose ip address from another interface
+  don't forget to mention --upload-certs option at end 
+* copy the config file into home directory to communicate with cluster
+* copy kubadm join command to join the node
+
+they will give which option need to set to which value, you just add -- into each option
+
+4) Install network plugin on cluster?
+* search as install network plugin in kubernetes document
+* choose networking add-on link
+* choose network plugin they told to installl
+* click on flannel as i have install on pratice
+* they will tell to update pod cidr,search for Network and update cidr range
+* download the file using wget and update pod cidr on Network section
+
+editing on already created network plugin:
+* click on configuration link on readme file to know how to pass options
+  update the option on arg key of main container 
+  
+  option which i have added is --iface="" and mention the interface name within double quotes
+
+
+**Cluster maintenance**
+
+OS upgrades:
+  drain the node before os upgrade
+   $ kubectl drain <node-name> --> 
+    what this drain command will do?
+    cordons the node (marks it unschedulable).
+    Evicts all evictable pods from the node.
+    controllers move workloads into other worker
+ 
+   To ignore daemonset, use --ignore-daemonsets option
+   $ kubectl drain node01 --ignore-daemonsets
+ 
+  reboot system after os upgrade
+
+  once it come online,uncordon node to schedule pod on node
+  $ kubectl uncordon <node-name>
+
+  $ kubectl cordon <node-name> --> mark a Kubernetes node as unschedulable
+
+  
+Cluster upgrade: --> kubernets upgrade is very easy using kubeadm --> need to do two more time
+https://uklabs.kodekloud.com/topic/practice-test-cluster-upgrade-process-2/
+
+Control plane upgrade steps:
+* serach for upgrade kubeadm on kubenetes document
+* choose the link based on which version your going to upgrade 
+  if 1.34 click on 1.34
+  if 1.35 click on 1.35
+* go to change the package repo section using the document mentioned on same doc
+  copy command and update kubernetes vesion like v1.35 
+  run the apt-get update
+* come back to previous document and follow the steps after change package repo section
+* updrade kubeadm --> update version before running command without v 
+* upgrade control plan 
+  sudo kubeadm upgrade apply v1.35.x --> mention the version --> this will take 5min
+* drain the node 
+   kubeadm drain controlplan --ignore-daemonsets
+* upgrade kubelet and kubectl --> mention the vesion like 1.35.0-1.1 --> command will have format in example
+* do systemctl daemon reload and restart kubelet
+    sudo systemctl daemon-reload
+    sudo systemctl restart kubelet
+* uncordon the node
+  kubectl uncordon controlplane
+* check the is it upgraded or not
+  kubectl get nodes
+
+upgrading worker node steps:
+* click up upgrade linux nodes link on Upgrade worker node section and follow the document
+* draint the worker node --> run the controlplane
+  $ kubectl drain node01
+* login into worker node
+* update the change package repo by going into that document
+* come back previous document
+* click on upgrade linux nodes
+*  upgrade worker node
+   $ sudo kubeadm upgrade node
+* upgrade kubelet and kubectl --> mention the vesion like 1.35.0-1.1 --> command will have format in example
+* do systemctl daemon reload and restart kubelet
+    sudo systemctl daemon-reload
+    sudo systemctl restart kubelet
+* uncordon the node on control plane
+  kubectl uncordon node01
+
+
+ETCD management:
+
+  we can reach etcd through https://127.0.0.1:2379
+
+  asked to take etcd backup , use the below command , need to remember this command
+  $ export ETCDCTL_API=3
+
+  $ etcdctl snapshot save <path to save> --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key --> make sure the use the file which is mention in question
+
+  restore the backup
+ 
+  $ etcdctl snapshot restore <path to backup file> --data-dir /var/lib/etcd-from-backup --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.cert --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key
+ 
+  update the restored path on data-dir option in /etc/kubernetes/manifests/etcd.yaml file
+  
+  update path in volumes and volume mounts in /etc/kubernetes/manifests/etcd.yaml file
+
+  apply the new updated etcd.yaml
+  $ kubectl create -f /etc/kubernetes/manifests/etcd.yaml
+
+
+**Services and networking:**
+
+Note:  In the official exam, all essential CNI deployment details will be provided.
+       we can install the any networking solution listed on kubernetes document
+       In exam they will provide document to install network solution,read question and install 
+       network solution which is asked in question
+
+To check which network interface configured for cluster connectivity on control plane?
+get ns,identify network solution(which network plugin installed),generate yml from pod resouce.
+check value of iface option, you will check to know which network interface is used or configured.
+
+run $ifconfig command to see the details of available interfaces. mac address of interface also will come in output.
+
+creating ephemeral debug container when the pod which we want to debug don't have minimal sh or bash:
+kubectl debug -it -n kube-system <pod name which need to connect> --image busybox 
+
+To identify the default gateway?
+route -n --> list the routes available on node
+which destination set to 0.0.0.0 default gateway
+
+2379 is port which all control plane components connects to etcd
+
+2380 is only for etcd peer-to-peer connectivity
+
+use $ systemctl status <service-name> -->which help to identify the service file and from there you will get more details
+
+kubelet, kubectl and kubeadm will be installed on system level
+kubelet configuration will come from  /var/lib/kubelet/config.yaml
+  check containerd endpoint on the above file
+
+to check which path configured with all binaries of CNI supported plugins?
+check the pod yaml for path configuration
+
+All installed CNI plugins will be present on /opt/cni/bin
+this directory must contains one cni plugin binary, if it have multiple we have explicitly mention which one to use.
+
+what is CNI plugin configured to be used on this kubernetes cluster?
+check the namespaces 
+identify the cni plugin namespace
+generate po yaml
+search for cni , you will get to know which cni plugin is configured
+
+what binary of plugin will be invoked after containerd start ns and container?
+the cni plugin deployed on cluster will be invoked 
+
+Networking CNIs:
+
+which CNI plugin is installed on the cluster?
+check the ns and identify the cni plugin namespace
+
+to check is communication allowed from particular pod into another particular pod?
+kubectl exec -it <pod name> -- curl -m 5 <another pod ip>
+
+Flannel's  network plugin don't support NetworkPolicy
+
+Plugin configuration will be present on /etc/cni/net.d/ folder
+
+Delete flannel plugin?
+just delete the ns of flannel, which will delete everything running inside that namespace
+delete the configuration file from /etc/cni/net.d/10-flannel.conflist 
+
+Install calico CNI using document?
+* they have given the installation document, talk about what to install,which dataplane need to select, opterator and CRDs.
+* read question properly and follow the document in-order
+  https://docs.tigera.io/calico/latest/getting-started/kubernetes/self-managed-onprem/onpremises 
+* before running the custom resource defintion file, update the pod cidr which is given in question
+* run the below command to check all pods on cni plugin are come up
+  $ watch kubectl get pods -n calico-system
+* calico CNI plugin will support the NetworkPolicy
+
+Service networking:
+
+What is the IP address and subnet mask assigned to the controlplane node's primary network interface?
+Run $ ip addr show --> check the eth0 interface configuration so you will get ip and subnet mask
+
+What is the range of IP addresses configured for PODs on this cluster?
+open the kube-controll-manager.yaml from /etc/kubernetes/manifest folder and check cluster-cidr for ip address range for poss in cluster.
+
+What is the IP Range configured for the services within the cluster?
+open kube-controller-manager.yaml from /etc/kubernetes/manifests folder and check for service-cluster-ip-range option, you will get the details
+
+How many kube-proxy pods are deployed in this cluster?
+check the pods in kube-system namespace and the answer
+  $ kubectl get -n kube-system po 
+
+What type of proxy is the kube-proxy configured to use?
+generate the yml for kube-proxy config map and check for mode option, if it is not set then by default it select iptable as proxy type
+
+How does this Kubernetes cluster ensure that a kube-proxy pod runs on all nodes in the cluster?
+kubernetes deploy the kube-proxy as daemonset because daemonset ensure the running one pod on each node
+
+coreDNS:
+Identify the DNS solution implemented in this cluster?
+ check the pods on kube-system, you will get to know the which DNS solution is implemented
+
+How many pods of the DNS server are deployed?
+same as above
+
+what is the name of the service created for accessing the coreDNS?
+check the service in kube-system namespace
+  $ kubectl get -n kube-system svc
+
+What is the IP of the CoreDNS server that should be configured on PODs to resolve services?
+check the /etc/resolv.conf file in any one of application pod running in default namespace
+  $ kubectl exec -it -n <pod name> -- cat /etc/resolv.conf
+
+Where is the configuration file located inside the CoreDNS pod for configuring the CoreDNS service?
+generate the yml file for one of coredns pod and check the argument
+  $ kubectl get -n kube-system po <coredsn-pod-name> -o yaml > coredsn.yaml
+
+How is the Corefile passed into the CoreDNS POD?
+check how corefile is mounted, like is it from configmap or secret or from host on generated coredns pod yaml file
+
+What is the root domain/zone configured for this kubernetes cluster?
+generate the yaml file for configmap of coredns , check for corefile configuration on top side
+
+What name can be used to access the hr web server from the test Application?
+we can use the service name of hr web server po.
+if hr pod is in different namespace,we have to use service name along with namespace name  
+
+Which of the following names can be used to access the web-service Service in the payroll namespace from the test application?
+<name of service>.<name of namespace>
+
+if web app deployed on default ns and db app deployed on db namespace, you must use the <service-name>.<namespace-name> to make communication between pods in different namespace
+
+From the hr Pod, perform an nslookup on the correct DNS name of the mysql Service in the payroll namespace so that the lookup succeeds, and store the command output on the node in the file /root/CKA/nslookup.out.
+k exec -it hr -- nslookup mysql.payroll >  /root/CKA/nslookup.out
+
+ingress networking:
+it all about checking ingress controller deployment and ingress resource deployment
+ $ k get ns
+ $ k get -n <ingress namespace> po
+ $ k get -n <app namespace> ing
+ $ k get -n <app namespace> ing <name of pod> -o yaml > ingress.yaml
+
+You are requested to change the URLs at which the applications are made available.
+Make the video application available at /stream.
+ans: generate the yaml for ingress resouce on app namespace 
+   k get -n <app-namespace> ing <ingress pod name> -o yaml > ingress.yaml
+
+will ask you to add new path as new company acquired?
+copy the path section, update service name,endpoint and do replace
+validate is the new path is working as expecting by hitting url by path or do curl
+
+asked to create new ingress resouce on new namespace?
+genereate the ingress yaml from which is already present in other namespace
+start updaing name of ingress, namespace,backend service path,rewrite annotation as it is and make sure the name of ingress  must match the name given in question otherwise even if created no use, cross check the name and namespace
+hit the url and check is ingress working as expected
+
+Asked to create new ingress resource with host type, they will provide all detail like name of ingress, namespace,host and service to point?
+get the ingress yaml from kubernetes document
+start updating the your details on ingress yaml
+ingressClassName will be add under spec section with space aligned with rules indentation
+
+Ask to add tls configuration?
+check in kubernetes document for tls section and update your details on the tls section
+
+ask to add annotation on ssl redirect as true?
+annotation add indentation equal to name and search for annotation on document,add and redeploy
+
+we can't test url by browser, we have to do curl to check is our ingress configuration is working or not.
+curl -Lk https://app.kodekloud.local
+
+gateway api: 
+
+Read and understand the pratical guide to Gateway api.
+
+* In this demo we are using Nginx Gateway controller.
+1) Installing nginx gateway controller
+  $ kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v1.6.2" | kubectl apply -f -
+ 
+  this command will download the manifests,build using kustomize and immidiately apply them into kubernetes cluster.
+ 
+  $ kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/experimental?ref=v1.6.2" | kubectl apply -f -
+
+  $ helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric --create-namespace -n nginx-gateway
+2) Gateway Class:
+  A GatewayClass defines a set of Gateways that are implemented by a specific controller. Think of it as a blueprint that tells Kubernetes which controller will manage the Gateways.
+  Purpose of Gateway class:
+  * Decouples Gateway configuration from the actual implementation: This allows you to define Gateways without worrying about the underlying controller.
+  * Supports multiple gateway implementations in a single cluster: For example, you can have both NGINX and Istio Gateways in the same Kubernetes cluster.
+  * example of a GatewayClass:
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: GatewayClass
+    metadata:
+      name: nginx
+    spec:
+      controllerName: nginx.org/gateway-controller
+  * controllerName: This must match the name expected by your controller (e.g., nginx.org/gateway-controller for NGINX). It tells Kubernetes which controller will manage Gateways of this class.
+
+3) Configuring HTTP Gateway and Listener:
+   * A Gateway is a Kubernetes resource that defines how traffic enters your cluster. It specifies the protocols, ports, and routing rules for incoming traffic.
+   * Example of a Gateway that listens for HTTP traffic:
+     apiVersion: gateway.networking.k8s.io/v1
+     kind: Gateway
+     metadata:
+       name: nginx-gateway
+       namespace: default
+     spec:
+       gatewayClassName: nginx
+       listeners:
+       - name: http
+         protocol: HTTP
+         port: 80
+         allowedRoutes:
+           namespaces:
+             from: All
+    * Explanation:
+       gatewayClassName: Refers to the GatewayClass (e.g., nginx) that will manage this Gateway.
+       listeners: Defines how the Gateway listens for traffic.
+       name: A unique name for this listener.
+       protocol: Specifies that this listener will handle HTTP traffic.
+       port: The port number on which the Gateway will listen for HTTP traffic.
+       allowedRoutes: Specifies which namespaces can define routes for this Gateway. Here, from: All allows routes from all namespaces.
+    * This configuration sets up a Gateway to handle HTTP traffic on port 80 and forward it to the appropriate backend services.
+
+4) HTTP Routing:
+   * An HTTPRoute defines how HTTP traffic is forwarded to Kubernetes services. It works in conjunction with a Gateway to route requests based on specific rules, such as matching paths or headers.
+   
+  * Example of an HTTPRoute
+  apiVersion: gateway.networking.k8s.io/v1
+  kind: HTTPRoute
+  metadata:
+    name: basic-route
+    namespace: default
+  spec:
+    parentRefs:
+    - name: nginx-gateway
+    rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /app
+      backendRefs:
+      - name: my-app
+        port: 80
+
+   * Explanation:
+     * parentRefs: Links this route to a specific Gateway (e.g., nginx-gateway).
+     *    
+     
+Gateway is very big topic so i am skipping now, need to read and understand the below blog
+ https://www.udemy.com/course/certified-kubernetes-administrator-with-practice-tests/learn/lecture/50127829#overview
+
+Update the nginx-gateway service to expose ports 30080 for HTTP and 30081 for HTTPS:
+we can generate the yaml for service and update manually if we feel patch command difficult
+$ k get ns
+$ k get -n nginx-gateway svc
+$ k get -n nginx-gateway svc <sevicename> -o yaml > svc.yaml
+then update the port details they have suggested and re-apply them
+$ k replace -f <path to file>
+
+$ kubectl patch svc nginx-gateway -n nginx-gateway --type='json' -p='[
+  {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30080},
+  {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30081}
+ ]'
+
+Asked to create gateway api(which means gateway) and give their configuration?
+use the gateway documentation from kubernetes document,
+kubernetes document have example yaml for all(gateway class,gateway api,http route,udp route etc)
+use those document and update with your details
+
+To work routing using gateway, following components must be deployed on same order.
+   gateway class
+   gateway controller
+   gateway api(gateway)
+   then we can create http routing,udp routing etc
+
+Application lifecycle management:
+
+Rolling updates and Rollback
+
+updating the image of pod
+ $ kubectl set image deployment <deployment-name> <container-name>=<image>:<tag>
+
+ $ kubectl rollout status deployment <deployment name>
+
+ $ kubectl rollout undo deployment <deployment name>
+
+ $ kubeclt rollout history deploy <deployment name>
+
+ $ kubectl rollout undo deploy <deployment name> --to-revision=2
+
+recreate stratergy syntax:
+
+ spec:
+   replicas: 3
+   strategy:
+     type: Recreate 
+  
+rolling update syntax:
+  
+ strategy:
+   type: RollingUpdate
+   rollingUpdate:
+     maxSurge: 1
+     maxUnavailable: 1
+
+commands and arguments:
+
+command passing in command key in pod.yaml will replace the command mentioned on Entrypoint of dockerfile.
+arguments passing in args key in pod.yaml will replace the command mentioned on CMD of dockerfile
+
+simple question asked in this lab,able to answer so not mentioned questions here
+
+Configmap and Secret:
+ depend on documetn as we can't remember the syntax
+
+ $ k get cm --> number of configmaps on default namespace
+ $ k get secret
+ $ k get po
+ $ k delete  po <pod name>
+
+ $ k create cm webapp-config-map --from-literal=APP_COLOR=darkblue --from-literal=APP_OTHER=disregard
+
+config.properties
+APP_NAME=nginx
+ENV=production
+
+$ kubectl create configmap app-config --from-file=config.properties
+
+Suppose app.env:
+APP_NAME=nginx
+ENV=production
+
+$ kubectl create configmap app-config --from-env-file=app.env
+
+Reading the env from configmap into pod: 
+
+we can't remember the syntax so search as configmap on kubernetes document
+method 1: using name of configmap
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    envFrom:
+    - configMapRef:
+        name: app-config
+
+method 2: reading only one env
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    env:
+    - name: MY_APP
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: APP_NAME
+ 
+method 3: Mount the ConfigMap as a volume
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/config
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-config
+
+creation of secret :
+$ kubectl create secret generic app-secret \
+  --from-literal=username=admin \
+  --from-literal=password=Admin@123
+
+$ kubectl create secret tls NAME --cert=path/to/cert/file --key=path/to/key/file
+$ k get secret
+$ k describe secret <name of secret>
+
+use document to read envs from secret into po,creation of secret
+
+HPA:
+search for hpa document:
+  hpa kubernetes document
+  then come down and check for hpa walktrough
+  which will help us to create hpa
+
+VPA:
+ skip this as it is not impartant but praticed the some of lab question
+
+Scheduling:
+
+Manual scheduling:
+ we can schedule po without scheduler using nodeName key in pod yaml 
+ put nodeName key under spec section
+
+Labels and selectors:
+
+ listing the pods with label 
+ $ kubectl get po -l key=value
+
+ To get all resouces deployed on cluster
+ $ kubectl get all -A --> show the all resources deployed on cluster
+
+ we can list the resouces deployed on entire with particular label
+ $ kubectl get all -A -l env=prod --> list all resouces which are deployed with env=prod label
+
+ Identify the POD which is part of the prod environment, the finance BU and of frontend tier?
+ $ k get po -l env=prod -l bu=finance -l tier=frontend
+
+Taint and Toleration:
+
+Adding the taint into node
+  $ k taint node <node name> key=value:effect
+
+  types of effects:
+   NoSchedule
+   PreferNoSchedule
+   NoExecute
+
+removal of taint from node
+  $ k taint node <node name> key-  --> - at the end is very impartant to remove taint
+
+$ k run mosquito --image=nginx ---> creation of pod
+
+adding toleration into pod:
+ $ k run bee --image ngixn --dry-run=client -o yaml > bee.yaml
+ then update the toleration into create yaml
+ apply the yaml 
+
+for controll plane or worker plane , key will looks node-role.kubernetes.io/control-plane when cluster add the taint
+
+Node affinity:
+
+adding label into node
+ $ k label node <node name> key=value
+
+ $ k create deploy <name of deploy> --image <image name> --replicas <number>
+
+Asked to set the node affinity for deployment?
+use the kubernetes document to get syntax and use it in yaml
+affinity syntax will come under spec of container
+
+control plane will have only key like node-role.kubernetes.io/control-plane and asked to schedule pod on control plane
+so use key and operator as Exists --> so you can deploy using only key 
+
+we can't edit specification of an existing pod other than the below
+  spec.containers[*].image
+
+  spec.initContainers[*].image
+
+  spec.activeDeadlineSeconds
+
+  spec.tolerations
+
+Edit in deployment:
+ With Deployments you can easily edit any field/property of the POD template. Since the pod template is a child of the deployment specification,  with every change the deployment will automatically delete and create a new pod with the new changes. So if you are asked to edit a property of a POD part of a deployment you may do that simply by running the command
+
+ $ kubectl edit deploy <name of deploy>
+ better to generate yaml, update your changes and use replace command to delete existing deployment and create new deployment.
+
+Resources:
+use the document to update resource requests and limits.
+
+Static pod:
+
+static pod are pod which will run once cluster set up done and manifests for static pods are come from  /etc/kubernetes/manifests/
+
+how many static pods on cluster?
+check the yaml files on /etc/kubernetes/manifests folder
+
+which pod is not deployed as static pod?
+which pod yaml not present on /etc/kubernetes/manifests folder, that pod is not scheduled as static po
+
+What is the path of the directory holding the static pod definition files?
+/etc/kubenetes/manifests
+
+Asked to create static pod?
+first generate pod yaml without executing that, then move into /etc/kubernetes/manifests folder
+ $ k run static-busybox --image busybox --dry-run=client -o yaml --command sleep 1000 > static-busybox.yaml 
+
+  Please mention the command at the end  otherwise actual pod wil be created
+once you move pod yaml into /etc/kubernetes/manifests folder, kubernetes will create pod
+
+Edit the image on the static pod you created in the previous task to use busybox:1.28.4
+update that pod yaml which is present in /etc/kubernetes/manifests folder and wait for 5 to 10 seconds
+kubernetes automatically create new pod
+
+* To identy the from where static pod is coming , check the kubelet config file which have staticPodPath,
+under that directory yaml files are present are created as static pod.
+* usually all node have same static pod path but for debugging it may be updated as different path.
+each node can create static pod when you place yaml on static pod path
+* Once you delete yaml file from staic pod path, pod will get deleted automatically by kubelet
+
+Multiple Scheduler:
+
+when we have multiple scheduler, how to mention to use particular scheduler from pod?
+use schedulerName: <name of scheduler> key under spec of pod
+
+
+Admission controllers:
+
+The ImagePolicyWebhook admission controller intercepts pod creation requests and consults an external webhook service to determine whether the container images specified in the pod spec should be allowed or denied.
+
+configuring the ImagePolicyWebhook on cluster
+
+enabling admission controller plugin? --> successfully configured
+* open the kube-apiserver yaml from /etc/kubernetes/manifests folder
+   add the admission controller plugin name into --enable-admission-plugins option,
+   create new volume and volume mount to mount the imagevalidation configuration
+   add the admission controller config file flag by mentioning path
+    - --admission-control-config-file=/etc/kubernetes/imgvalidation/admission-configuration.yaml
+
+* cat /etc/kubernetes/imgvalidation/admission-configuration.yaml 
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: ImagePolicyWebhook
+  path: /etc/kubernetes/imgvalidation/imagepolicy-conf.yaml
+
+* save,as kube-api server is static pod,kubelet automatically recreate new pod with updated cofiguration
+you can't run any kubectl command as kube-apiserver is down to update new configuration,wait for 10 seconds
+
+Validating and Mutating Admission Controller:
+
+creating the tls secret 
+  $ kubectl create secret tls NAME --cert=path/to/cert/file --key=path/to/key/file
+
+Services:
+
+creating the service with cluster ip type:
+$ k expose deployment nginx --name nginx-service --port 8080 --target-port 80
+
+nodeport type:
+$ k expose deployment nginx --name nginx-svc-node --type NodePort --port 8080 --target-port 80 
+  
+   if you want to add nodeport,create service with above command , generate yaml and edit and redeploy
+
+$ k get ep --> to get the enpoints of services and used to verify is service re-directing into pods and even into correct pod.
+
+Storage:
+
+PV and PVC:
+
+Asked to configure the volume into pod.
+check for doucment,generate yaml and update volume, volume mount configuration.
+
+search as configure a pod to use volume in kubenetes document
+you will get pv and pvc yaml to create pv and pvc
+how to use pvc in pod also you will get from that document
+
+$ kubectl apply -f <path to definition file>
+$ kubectl get pv
+$ kubectl get pvc
+$ kubectl describe pv <name of pv>
+$ kubectl describe pvc <name of pvc>
+
+Storage class:
+
+$ kubectl get sc
+
+$ kubectl describe sc <name of storage class>
+
+Asked to create pvc using storage class,use the same document configure pod to use pv 
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-pvc
+spec:
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+
+just mention about access mode,storage capacity remaining will be taken care by storageclass
+
+Asked to create storageclass?
+use the kubernetes document to create storageclass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

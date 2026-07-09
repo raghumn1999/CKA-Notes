@@ -1,0 +1,369 @@
+
+Deatils on remote desktop:
+* Request break button available on left side , if don't find it,ask in live chat
+  Note: timer will not stop
+* use ctl+alt+c for coyping on terminal
+  use ctl+alt+p for pasting on terminal
+* use ctl+f for find in page feature, resize the browser if find in page feature not shown
+* 
+
+Tips:
+* Don't spend more than 6 minutes on one question.
+  your spend 20min for one question, that is very bad
+* search a topic with sentence like
+  Ex: you need to know on how to configure network policy 
+   search as configure a pod to use network policy --> if this document available come otherwise 
+   network policy document will come , go the network policy document
+  
+   search as configure a pod to use persistent volume
+   search as configure a pod to use volume
+* right click on file and click on copy a address 
+  do wget into link , you will be downloaded file easily
+
+
+
+
+
+1) Add argo cd repo using helm and create template for 8.3.1 version.
+
+$ helm repo add argo <github repo link> --> adding argo repo into helm repo, github repo link will given in question
+$ helm repo update --> updating helm repo
+$ helm search repo argo/argocd --> searching for version of argocd , basically version given in question
+$ helm template argocd argo/argocd --version 8.3.1 > argocd.yaml --> generating manifests and saving into yaml
+
+Other important helm commands:
+$ helm search repo <repo-name> --> list all chats in repo
+$ helm search repo <repo-name>/<chat-name> --> list all version in chat
+$ helm install <release-name> <repo-name>/<chat-name>
+$ helm repo list
+$ helm install <release-name> <repo-name>/<chat-name> --namespace web --create-namespace
+$ helm install <release-name> <repo-name>/<chat-name> --version <version number>
+$ helm template <release-name> <repo-name>/<chat-name> --version <version number> --> generate the manifets for particular vesion
+$ helm upgrade <release-name> <repo-name>/<chat-name> -f values.yaml
+$ helm history <release-name> 
+$ helm rollback <release-name>
+$ helm uninstall <release-name>
+$ helm show values <repo-name><chat-name>  > values.yaml
+
+2) During migration one is down, debug why it is ?
+* Do ssh into node
+* check the status of kubelet --> $ sudo systemctl status kubelet
+* check the logs of service --> $ sudo journalctl -u kubelet
+
+3) make frontend app in frontend namespace communicate to backend app in backend namespace?
+* search in kubernetes document --> declare network policy --> use this for ingress configuration
+* search network policy --> use this for egress configuration(this also have ingress config)
+* use wget to download the yaml instead of copy past
+* use that yaml file and update your configuration
+
+Network policies are appliced on at pod level, and also create for namespace level
+To allow request,use ingress
+To send request,use egress
+
+If they asked to create networkpolicy for services, check for internal application associates with service,get labels of pod, and start creating network policy
+
+They only given one entry(in example),copy and paste same entry for second 
+
+Create a network policy to allow egress traffic from the Internal application only to the payroll-service and db-service.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-policy
+spec:
+  podSelector:
+    matchLabels:
+      name: "internal"
+  egress:
+   - to:
+     - podSelector:
+         matchLabels:
+           name: "payroll"
+     ports:
+       - protocol: TCP
+         port: 8080
+   - to:
+     - podSelector:
+         matchLabels:
+           name: "mysql"
+     ports:
+       - protocol: TCP
+         port: 3306
+
+
+Ingress condition:
+OR condition (multiple items):
+
+from:
+- podSelector:
+    matchLabels:
+      app: frontend
+- podSelector:
+    matchLabels:
+      app: backend
+Allow Pods with app=frontend OR Pods with app=backend.
+
+AND condition:
+from:
+- podSelector:
+    matchLabels:
+      app: frontend
+from:
+- podSelector:
+    matchLabels:
+      app: frontend
+      access: "true"
+Allow only Pods that have both labels: app=frontend and access=true
+
+Under ingress section,we can add one or more pods without from key, network policy will act as OR condition.
+if we add from under ingress section, networkpolicy will act as AND conditon
+
+$ k get networkpolicy --> listing the available network policy
+$ k get po --show-labels --> help to fetch labels associated with pods
+ 
+4) migrate the ingress into gateway,
+   create gateway,then create http route with reference of ingress configuration?
+* they have created ingress resource already, so generate yaml and use it for reference
+* search gateway api(also know as gateway) in kubernetes document and click on first link
+  using document and create gateway class if they asked and controller name they will be provided in question
+* first configure http gateway, in gateway we have two parts * gateway for route and * route creation
+* create http route 
+  
+Complete setup of gateway api on cluster:
+1) Install gateway controller: ngixn gateway controller
+  $ kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v1.6.2" | kubectl apply -f -
+  $ kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/experimental?ref=v1.6.2" | kubectl apply -f -
+  $ helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric --create-namespace -n nginx-gateway
+
+2) Creation of GatewayClass:
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: nginx
+spec:
+  controllerName: nginx.org/gateway-controller
+
+$ kubectl create -f gatewayclass.yaml
+$ kubectl get gatewayclass
+
+3) Configuring HTTP gateway and listener(listener is included in this http gateway):
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: nginx-gateway
+  namespace: default
+spec:
+  gatewayClassName: nginx
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+
+$ kubectl create -f http-gateway.yaml
+$ kubectl get gateway
+
+4) configuring the http route:
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: basic-route
+  namespace: default
+spec:
+  parentRefs:
+  - name: nginx-gateway  # name of gateway which is created for this route
+  rules:
+  - matches:  # matches refer to plural so we can add more path
+    - path:
+        type: PathPrefix
+        value: /wear
+    backendRefs:
+    - name: wear-service
+      port: 8080
+    - path:
+        type: PathPrefix
+        value: /watch
+    backendRefs:
+    - name: video-service
+      port: 8080
+
+$ kubectl create -f http-route.yaml 
+$ kubectl get httproute 
+
+yaml configuration for gatewayclass,http gateway and httproute available on kubernetes document.
+Remove hostnames key or hostname key from yaml which you copy from kubernetes document.
+They will provide manifest to install gateway controller
+  command to remember
+  $ kubectl kustomize <github link> | kubect apply -f -
+
+5) List all cert manager resoruce into one file and get the subject name of certmanget into one file
+As we don't cert manager, i am getting yaml of all resource in default namespace
+$ kubectl get all -n cert-manager -o yaml > all_resources.yaml
+
+asked to get subject on all pod:
+* forming the json query
+$ k get svc <name of svc> -o json 
+* analyze the json output and form the query
+  items[*].spec.ports[*].name
+* add the queryt into jsonpath parameter
+  $ k get svc  -o=jsonpath='{items[*].spec.ports[*].name}'   --> don't mention the svc name or resouce name while doing query
+
+$ k get po <pod name> -o json
+
+forming the query
+.items[*].spec.containers[*].image
+
+$ k get po -o=jsonpath='{.items[*].spec.containers[*].image}'
+
+search jsonpath in kubernetes document and make use of it
+
+5) Equally distribute resources into all three pods.
+if they generally told to distribute cpu and memory , consider total memory and divide by number of pods
+   <total_cpus>/<number of pods>
+   <total_memory>/<number of pods>
+   update this numbers into limit key
+
+if they told to consider only available memory
+   cpu is same calculation
+   <available memory>/<number of pods>
+   update this numbers into limit key
+
+$ lscpu --> for checking number of cpus on system
+$ free -h --> for checking memory status
+
+re-deploy the deployment
+
+6) Create pvc and use in deployment to persist?
+* search as configure a pod to use persistent volume, 
+  you will get detailed steps like creation of pv,pvc and using pvc in pod
+
+pv status will go into bound once any pvc claim storage.
+pvc status also go into bound once it find the pv to store data
+let us pvc in pod 
+  adding voulme under spec of pod section
+  adding volumemount under containers section
+make sure the name used on pvc in pod yaml must match on created pvc
+
+i have practiced by creating nginx deploy, then used above document to create pv,pvc and use in deployment.
+successfully configured pvc and persisted the logs of nginx
+
+7) configure the sidecard container to steam the logs from main container?
+* search as configure a pod to use volume --> you will get details on how to use volumes and volumemounts
+* create one volume with emptDir type, then use that volume in both container
+* update command give in question into sidecar container
+* check the logs of the sidecard container
+ $ kubectl logs <pod name> -c <sidecard container name>
+ $ kubectl get po --> see 2/2 on ready column to ensure both container are running
+
+8) create hpa with following configuration and make sure the down scaling seconds set to 30 seconds
+* search as hpa , you will get yaml configuration from one link
+* you will get behavior details from next link
+  downscale stabilization window  is asked in exam
+* add behavior section under spec
+Note:
+Behavior:
+  Scale Up:
+    Stabilization Window: 0 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Pods     Value: 4    Period: 15 seconds
+      - Type: Percent  Value: 100  Period: 15 seconds
+  Scale Down:
+    Stabilization Window: 60 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Percent  Value: 100  Period: 15 seconds
+
+default behavior is above
+There is only a single policy for scaling down which allows a 100% of the currently running replicas to be removed which means the scaling target can be scaled down to the minimum allowed replicas.
+
+9) create storageclass with given configuration and make created storageclass as defult.
+* search as storageclass, you will get yaml, update configuration
+* on same search second link and follow the document
+* do check by get command
+  $ kubeclt get storageclass  --> default key added into storageclass name like (default)
+
+10) create service for deployment with node port type with following configuration
+* $ kubectl expose deploy <name of deploy> --name <service name> --port <service port> --target-port <container port> --type NodePort
+
+11) create ingress with given details for existing deployment.
+* search as ingress and click on ingress link
+* go to types of ingress section, it have configuration for host based,path based
+
+12) install cri-docker with some custom configuration.
+* install the cri-docker by using the their deb file
+  $ sudo apt-get install <path to deb file>
+* Configure the required kernel module
+  vi /etc/modules-load.d/k8s.conf
+
+  add 
+   br_netfilter
+   overlay
+
+  load them
+  modprobe br_netfilter
+  modprobe overlay
+* Configure the net.* parameters
+  $ vim /etc/sysctl.d/k8s.conf
+  
+  add the asked network configuration
+
+  net.bridge.bridge-nf-call-iptables = 1
+  net.bridge.bridge-nf-call-ip6tables = 1
+  net.ipv4.ip_forward = 1
+  
+  apply them
+  $ sudo sysctl --system
+
+  verify:
+  sudo sysctl net.bridge.bridge-nf-call-iptables
+
+* Enable crio-docker docker 
+  $ sudo systemctl daemon-reload
+  $ sudo systemctl enable cri-docker.socket
+  $ sudo systemctl start cri-docker.socket
+
+* Enabling service
+  $ sudo systemctl enable cri-docker
+  $ sudo systemctl start cri-docker
+  $ sudo systemctl status cri-docker
+
+creating default configuration for containerd.
+$ containerd config default
+for checking which driver is init process
+ $ ps -p 1  --> most of system will have systemd only
+
+13) install network plugin which support network policy 
+*  calico network plugin will support network policy
+   we can install calico using operator or manifest
+  they will provide manifest to install
+* setting pod cidr --> if we are using kubeadm, no need to set CALICO_IPV4POOL_CIDR env.
+  if you are using a different pod CIDR with kubeadm, no changes are required - Calico will automatically detect the CIDR based on the running configuration. For other platforms, make sure you uncomment the CALICO_IPV4POOL_CIDR variable in the manifest and set it to the same value as your chosen pod CIDR.
+* installation document
+  https://docs.tigera.io/calico/latest/getting-started/kubernetes/self-managed-onprem/onpremises#install-calico
+  choose manifests tag 
+
+14) create priority class
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 

@@ -1,0 +1,142 @@
+Time Management:
+Spend about 5–7 minutes per question.
+Skip difficult tasks and return later.
+Complete high-weight questions first.
+Verify resources after each task.
+
+
+| Priorityv  | Domain                                             | Exam Weight | Expected Questions |
+| --------   | -------------------------------------------------- | ----------: | -----------------: |
+| ⭐⭐⭐⭐⭐ | Troubleshooting                                    |     **30%** |                5–7 |
+| ⭐⭐⭐⭐   | Cluster Architecture, Installation & Configuration |     **25%** |                4–5 |
+| ⭐⭐⭐⭐   | Services & Networking                              |     **20%** |                3–4 |
+| ⭐⭐⭐     | Workloads & Scheduling                             |     **15%** |                2–3 |
+| ⭐⭐       | Storage                                            |     **10%** |                1–2 |
+
+Troubleshooting:
+
+Pod is stuck in pending:
+ Possible causes:
+  Node selector mismatch
+  Taints
+  No resources
+  PVC not bound
+
+  kubectl describe po podname
+  kubectl get events
+  kubectl get nodes
+
+Pod Crashloopback:
+  kubectl logs <pod-name>
+  kubectl describe pod <pod-name>
+ 
+  Typical fixes:
+   Wrong environment variable
+   Wrong ConfigMap
+   Wrong Secret
+   Application crash
+
+imagePullBackOff:
+  kubectl describe pod <pod-name>
+  
+  Possible reasons:
+   wrong image
+   Private registry auth issue
+   wrong image tag
+
+DNS failure:
+  kubectl exec busybox -- nslookup kubernetes.default
+
+look for:
+  coreDNS  --> kubectl get pod -n kube-system
+  kubelet  --> service kubelet status --> if it is installed on server level
+
+Node NotReady:
+ commands:
+   kubectl get nodes
+   systemctl status kubelet
+   journalctl -u kubelet
+
+control plan components down:
+ kubectl get pods -n kube-system
+ 
+ investication:
+   crictl ps
+   crictl logs
+
+etcd backup and restore --> one of the most common CKA task:
+  backup:
+  ETCDCTL_API=3 etcdctl snapshot save backup.db
+
+  restore:
+  ETCDCTL_API=3 etcdctl snapshot restore backup.db
+
+Cluster architechture:
+ setup cluster using kubeadm  --> see the nodes
+
+ kubeadm init --> on master node and it give join command to join nodes, use that to join node
+ kubeadm join --> joining the worker nod
+
+ clustet upgrade --> see the notes
+
+ certificates
+  Renew 
+  kubeadm certs renew all
+
+ Add worker node
+   typical task --> worker node failed
+     join it back
+ 
+   kubeadm create token 
+   kubeadm join --> join worker node using new token
+
+Service and Networking:
+ creation of service --> see other commands on how to create with different type of service
+   kubectl expose deploy nginx --port=80 --target-port=80
+
+ creation of ingress
+ 
+ Network policy:
+  Typical requirement:
+   Only frontend pod can access backend.
+
+ CoreDNS:
+  DNS lookup failing
+  Service not resolving
+  Fix CoreDNS
+
+ Kubelet
+  know where it is running
+  kubectl get po -n kube-system
+
+Workloads & Scheduling:
+
+ Deployment -> creation of deployment with specific requirement
+ 
+ Rollback 
+   kubectl rollout undo deploy <name-of-deployment>
+
+ Daemonset:
+  Typical question --> Run this pod on every node
+
+ statefulset:
+  Typical question --> Deploy database with stable identities
+
+ Taints and Tolerations:
+   Schedule pod only on master node
+
+ Node affinity:
+  Run only on SSD nodes
+
+ Resource limit tasks:
+  adding resource
+
+Storage:
+
+ create pv and pvc
+
+ storage class
+
+ mount volume
+  mount pvc into pod
+ 
