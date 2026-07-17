@@ -1,15 +1,14 @@
 
 Deatils on remote desktop:
-* Request break button available on left side , if don't find it,ask in live chat
+* Request break button available on right side , if don't find it,ask in live chat
   Note: timer will not stop
 * use ctl+alt+c for coyping on terminal
   use ctl+alt+p for pasting on terminal
 * use ctl+f for find in page feature, resize the browser if find in page feature not shown
-* 
 
 Tips:
 * Don't spend more than 6 minutes on one question.
-  your spend 20min for one question, that is very bad
+  you spend 20min for one question, that is very bad
 * search a topic with sentence like
   Ex: you need to know on how to configure network policy 
    search as configure a pod to use network policy --> if this document available come otherwise 
@@ -21,9 +20,6 @@ Tips:
   do wget into link , you will be downloaded file easily
 
 
-
-
-
 1) Add argo cd repo using helm and create template for 8.3.1 version.
 
 $ helm repo add argo <github repo link> --> adding argo repo into helm repo, github repo link will given in question
@@ -31,12 +27,146 @@ $ helm repo update --> updating helm repo
 $ helm search repo argo/argocd --> searching for version of argocd , basically version given in question
 $ helm template argocd argo/argocd --version 8.3.1 > argocd.yaml --> generating manifests and saving into yaml
 
+$ helm repo add argo https://argoproj.github.io/argo-helm
+$ helm repo update 
+$ helm search repo argo --> you will get list of chats supported by repo
+$ helm template argocd argo/argo-cd --version 10.1.3 > argocd.yaml  --> generating the manifests to deploy argo-cd
+
+but they told not install crd resources so we have to do customization using kustomize tool
+
+once you generated the argocd.yaml, we need to do kustomization like they told to not to install crd 
+
+create kustomination.yaml in same directory where argocd.yaml is present
+
+kustomization will have information about where is resource file present and resource kind,group and version.
+
+resources:
+ - argocd.yaml
+
+patches:
+ - path: remove-crds.yaml 
+   target: 
+     group: apiextensions.k8s.io
+     version: v1
+     kind: CustomResourceDefinition
+
+take the group,kind and version details from argocd.yaml. if you split value of apiversion  you will get group and version.
+
+create remove-crds.yaml with below content(using delete as we don't want to install crd resources)
+
+$patch: delete
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applications.argoproj.io
+
+take apiversion, kind and metadata with name form argocd.yaml
+
+$ k kustomize .  --> render the output of yamls doing to install
+
+$ k kustomize . | kubectl apply -f -      ---> this will install the resources which passed by kustomize command
+
+Other topics need to be look into it:
+adding functionality using kustomize
+replacing functionality using kustomize
+removing functionality  --> done 
+common transformers using kustomize --> done
+image transformers using kustomize  --> done
+
+remove-crd.yaml
+``
+$patch: delete
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applications.argoproj.io
+``
+
+kustomization.yaml --> covered common transformers, image transformers , namespace, prefix, suffix and delete:
+``
+resources:
+ - argocd.yaml
+
+
+commonLabels:
+   app: argocd
+
+images:
+ - name: quay.io/argoproj/argocd:v3.4.5  # mention the name of image, not name of container 
+   newName: quay.io/argoproj/argocd
+   newTag: v3.4.6 
+
+namespace: argocd
+
+namePrefix: raghu-
+nameSuffix: -dev 
+
+patches:
+  - path: remove-crd.yaml
+    target:
+      group: apiextensions.k8s.io
+      version: v1
+      kind: CustomResourceDefinition
+``
+
+$ k kustomize . | kubectl apply -f -  
+
+
+ignore directory structure as of now:
+
+directory structure:
+  k8s/
+    base/
+       kustomization.yaml
+       nginx-deploy.yaml
+       nginx-service.yaml
+    components/
+       cache/
+         kustoization.yaml
+         cache.yaml
+       db/
+         kustominzation.yaml
+         deployment-patch.yaml
+         db.yaml
+    overlays/
+       dev/
+         kustomization.yaml
+       staging/
+         kustomization.yaml
+       prod/
+         kustomization.yaml
+       
+      
+kustomization in base folder
+    resources:
+     - nginx-deploy.yaml
+     - nginx-service.yaml
+
+kustomization in components folder
+    apiVesion: kustomize.config.k8s.ip/v1alpha1
+    kind: Component
+
+    resources:
+     - cache.yaml
+     
+    patches:
+    - deployment-patch.yaml
+
+in deployment-patch.yaml,we can update the custom deployment configuration,so while deploying kustomize commond will overwrite default configuration which comes from base folder with deployment-patch.yaml configuration
+
+kustomization in overlays of base folder:
+   
+   resources:
+    - ../../base
+    - ../../components
+    
+
 Other important helm commands:
 $ helm search repo <repo-name> --> list all chats in repo
 $ helm search repo <repo-name>/<chat-name> --> list all version in chat
 $ helm install <release-name> <repo-name>/<chat-name>
 $ helm repo list
-$ helm install <release-name> <repo-name>/<chat-name> --namespace web --create-namespace
+$ helm install <release-name> <repo-name>/<chat-name> --namespace web --create-namespace --set key1=val1,key2=vul2
 $ helm install <release-name> <repo-name>/<chat-name> --version <version number>
 $ helm template <release-name> <repo-name>/<chat-name> --version <version number> --> generate the manifets for particular vesion
 $ helm upgrade <release-name> <repo-name>/<chat-name> -f values.yaml
@@ -45,10 +175,19 @@ $ helm rollback <release-name>
 $ helm uninstall <release-name>
 $ helm show values <repo-name><chat-name>  > values.yaml
 
-2) During migration one is down, debug why it is ?
-* Do ssh into node
-* check the status of kubelet --> $ sudo systemctl status kubelet
-* check the logs of service --> $ sudo journalctl -u kubelet
+2) During migration one node is down, debug why it is ?
+
+check the pods in kube-system namespace
+  $ kubectl get pods -n kube-system
+check the status of kubelet 
+  $ systemctl status kubelet
+all manifests files will be present in /etc/kubernetes/manifests folder
+
+kubele config file will be present in /var/kubelet/<config> --> check this file tharolly
+there is another file in /etc/kubernetes/kubelet.conf --> this file used to communicat with kube-api server
+
+understand the both kubelet files by seeing in working cluster and change something to break, reproduce the connection to kube-api server error
+
 
 3) make frontend app in frontend namespace communicate to backend app in backend namespace?
 * search in kubernetes document --> declare network policy --> use this for ingress configuration
@@ -128,6 +267,8 @@ $ k get po --show-labels --> help to fetch labels associated with pods
   using document and create gateway class if they asked and controller name they will be provided in question
 * first configure http gateway, in gateway we have two parts * gateway for route and * route creation
 * create http route 
+* how to add tls into http route which is configured on ingress.yaml 
+   check the gateway wiki page on udemy course
   
 Complete setup of gateway api on cluster:
 1) Install gateway controller: ngixn gateway controller
@@ -203,13 +344,15 @@ They will provide manifest to install gateway controller
 As we don't cert manager, i am getting yaml of all resource in default namespace
 $ kubectl get all -n cert-manager -o yaml > all_resources.yaml
 
+install certmanager and get the subject name form all resources?
+
 asked to get subject on all pod:
 * forming the json query
 $ k get svc <name of svc> -o json 
 * analyze the json output and form the query
   items[*].spec.ports[*].name
 * add the queryt into jsonpath parameter
-  $ k get svc  -o=jsonpath='{items[*].spec.ports[*].name}'   --> don't mention the svc name or resouce name while doing query
+  $ k get svc -o=jsonpath='{items[*].spec.ports[*].name}'   --> don't mention the svc name or resouce name while doing query
 
 $ k get po <pod name> -o json
 
@@ -348,8 +491,43 @@ for checking which driver is init process
 
 14) create priority class
 
+creating the priority class with one value less than user defined
+
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 999999999
+globalDefault: false
+description: "Highest user-defined priority"
+
+$ kubectl create -f priorityclass.yaml
+$ kubectl get priorityclass
 
 
+using the created priorityclass in our deployment:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      priorityClassName: high-priority
+      containers:
+      - name: nginx
+        image: nginx
+
+$ kubectl create -f deploy.yaml
+$ kubectl describe deploy <name of deploy>  | grep -i priorityclass   --> check is our priorityclass is used
 
 
 

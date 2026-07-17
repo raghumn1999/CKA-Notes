@@ -1,0 +1,7 @@
+
+revise the following notes:
+
+* questions.txt
+* killer shell solution 1
+* killer shell solution 2
+* focus_on_each_section.txt
